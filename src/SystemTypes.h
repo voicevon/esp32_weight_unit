@@ -1,0 +1,14 @@
+#ifndef SYSTEM_TYPES_H
+#define SYSTEM_TYPES_H
+
+enum SystemState {
+    STATE_RUN,
+    STATE_MENU_SELECT_WEIGHT,
+    STATE_CALIBRATING,
+    STATE_COMM_TEST,
+    STATE_CONFIG_ID,
+    STATE_CONFIG_ZTR,
+    STATE_VIEW_CALIB
+};
+
+#endif
