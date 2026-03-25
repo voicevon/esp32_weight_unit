@@ -39,8 +39,11 @@ private:
     bool _longPressHandled;
     bool _servoIsOpen;
     
-    // Communication Test variables
-    unsigned long _lastSendTime;
+    // Communication Test / RS485 Diag
+    unsigned long _lastUpdateMillis;
+    unsigned long _lastDiagMillis;
+    uint8_t _diagTxValue;
+    uint8_t _diagRxValue;
     int _txCount;
     String _rxData;
 

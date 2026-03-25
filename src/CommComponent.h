@@ -24,6 +24,13 @@ public:
     void updateStatus(uint16_t status);
     void updateRawADC(int32_t raw);
     
+    uint32_t getRxByteCount();
+    uint8_t getLastRxByte();
+    
+    // 原始 485 诊断接口 (绕过 Modbus)
+    void sendRawByte(uint8_t b);
+    int readRawByte();
+    
     // 命令读取接口
     uint16_t getControlCommand();
     void clearControlCommand();

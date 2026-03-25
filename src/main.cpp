@@ -18,7 +18,7 @@
 #define RS485_RX_PIN 22
 #define RS485_TX_PIN 23
 #define RS485_EN_PIN 21
-#define RS485_BAUD 115200
+#define RS485_BAUD 9600
 
 #define SERVO_PIN 16
 #define BUTTON_PIN 25

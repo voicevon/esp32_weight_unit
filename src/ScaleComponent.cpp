@@ -7,7 +7,16 @@ ScaleComponent::ScaleComponent(int dtPin, int sckPin)
 void ScaleComponent::begin() {
     scale.begin(_dtPin, _sckPin);
     loadCalibration();
-    scale.tare();
+    
+    unsigned long st = millis();
+    while(!scale.is_ready() && millis() - st < 2000) {
+        delay(10);
+    }
+    if (scale.is_ready()) {
+        scale.tare();
+    } else {
+        Serial.println("Scale: HX711 not ready, skip tare() on boot");
+    }
 }
 
 float ScaleComponent::getWeight(int samples) {

@@ -10,7 +10,8 @@ MainController::MainController(ScaleComponent& scale, DisplayComponent& display,
       _ztrThreshold(2), _ztrIndex(1),
       _btnPressStart(0), _lastBtnRelease(0), _btnPressed(false), 
       _longPressHandled(false), _servoIsOpen(false),
-      _lastSendTime(0), _txCount(0), _rxData("") {}
+      _lastUpdateMillis(0), _lastDiagMillis(0), _diagTxValue(0), _diagRxValue(0),
+      _txCount(0), _rxData("") {}
 
 void MainController::begin() {
     pinMode(_buttonPin, INPUT_PULLUP);
@@ -26,8 +27,10 @@ void MainController::begin() {
     else if (_ztrThreshold <= 5) _ztrIndex = 2;
     else _ztrIndex = 3;
     
-    _scale.begin();
     _display.begin();
+    _display.showMessage("Wait HX711...", 0);
+    
+    _scale.begin();
     _comm.begin(_currentId); // 初始化 Modbus Slave
     _comm.setZtrThreshold(_ztrThreshold); // 同步初始门限到 Modbus
     
@@ -44,33 +47,57 @@ void MainController::loop() {
         handleComm(); // 处理寄存器指令
     }
     unsigned long now = millis();
-    if (now - _lastSendTime > 100) {
-        long rawADC = _scale.getRawValue(); // 堵塞拿最新的 1 个采样，避免多次采样挂起超时
-        float scaleF = _scale.getScaleFactor();
-        float currentWeight = 0.0;
+    if (now - _lastUpdateMillis > 100) {
+        static long lastRawADC = 0;
+        static float lastWeight = 0.0;
         
-        // 核心修复：在这里统一用最新读到的 ADC 和比例尺演算重量，防止底层库干扰
-        if (abs(scaleF) > 0.001) {
-            currentWeight = (float)(rawADC - _scale.getOffset()) / scaleF;
+        long rawADC = lastRawADC;
+        float currentWeight = lastWeight;
+        float scaleF = _scale.getScaleFactor();
+
+        if (_scale.isReady()) {
+            rawADC = _scale.getRawValue(); // 安全读取
+            lastRawADC = rawADC;
             
-            // 防零飘死区 (Zero Tracking Deadband)
-            if (abs(currentWeight) <= (float)_ztrThreshold) {
-                currentWeight = 0.0;
+            if (abs(scaleF) > 0.001) {
+                currentWeight = (float)(rawADC - _scale.getOffset()) / scaleF;
+                
+                // 防零飘死区 (Zero Tracking Deadband)
+                if (abs(currentWeight) <= (float)_ztrThreshold) {
+                    currentWeight = 0.0;
+                }
             }
+            lastWeight = currentWeight;
         }
 
-        _lastSendTime = now;
+        _lastUpdateMillis = now;
         bool commActive = (_comm.getControlCommand() != 0); // 若有指令则闪烁
         
         // 同步实时重量到 Modbus 寄存器
         _comm.updateWeight(currentWeight);
         _comm.updateStatus((uint16_t)_currentState);
         
-        if (_currentState == STATE_VIEW_CALIB) {
+        uint32_t rxBytes = _comm.getRxByteCount();
+        uint8_t lastByte = _comm.getLastRxByte();
+        
+        if (_currentState == STATE_RS485_DIAG) {
+            // 485 诊断逻辑：使用独立定时器每秒发送一个自增字节
+            if (millis() - _lastDiagMillis > 1000) {
+                _lastDiagMillis = millis();
+                _diagTxValue++;
+                _comm.sendRawByte(_diagTxValue);
+            }
+            // 接收原始字节
+            int r = _comm.readRawByte();
+            if (r != -1) _diagRxValue = (uint8_t)r;
+            
+            // 复用 update 的参数传递 TX/RX 供 UI 绘制
+            _display.update(_currentState, 0, 0, _currentId, false, (int)_diagTxValue, (uint32_t)_diagRxValue, 0);
+        } else if (_currentState == STATE_VIEW_CALIB) {
             _display.updateViewCalib(scaleF, _scale.getOffset());
         } else {
             int displayParam = (_currentState == STATE_CONFIG_ZTR) ? _ztrOptions[_ztrIndex] : _calWeights[_calWeightIndex];
-            _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam);
+            _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam, rxBytes, lastByte);
         }
     }
 }
@@ -98,7 +125,14 @@ void MainController::handleButton() {
             _longPressHandled = true;
             _lastBtnRelease = 0; // 取消未决的短按
             if (_currentState == STATE_RUN) {
+                _currentState = STATE_RS485_DIAG;
+                _diagTxValue = 0;
+                _diagRxValue = 0;
+                _lastDiagMillis = millis();
+                _display.showMessage("485 DIAG MODE");
+            } else if (_currentState == STATE_RS485_DIAG) {
                 _currentState = STATE_CONFIG_ID;
+                _display.showMessage("CONFIG ID");
             } else if (_currentState == STATE_CONFIG_ID) {
                 _prefs.putInt("slave_id", _currentId);
                 _comm.begin(_currentId);
@@ -117,7 +151,8 @@ void MainController::handleButton() {
                     performCalibration(targetW); // 标定完成后会自动进入 VIEW_CALIB
                 }
             } else if (_currentState == STATE_VIEW_CALIB) {
-                _currentState = STATE_RUN; // 看完参数长按退回主界面
+                _currentState = STATE_RUN; // 循环回到 RUN
+                _display.showMessage("RUN MODE", 1000);
             }
         }
     } else if (!currentBtnState && _btnPressed) {

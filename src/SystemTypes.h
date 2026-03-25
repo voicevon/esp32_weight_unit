@@ -8,7 +8,8 @@ enum SystemState {
     STATE_COMM_TEST,
     STATE_CONFIG_ID,
     STATE_CONFIG_ZTR,
-    STATE_VIEW_CALIB
+    STATE_VIEW_CALIB,
+    STATE_RS485_DIAG
 };
 
 #endif

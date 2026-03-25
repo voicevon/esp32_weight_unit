@@ -12,6 +12,7 @@ public:
     void tare();
     void calibrate(int knownWeight);
     void setScale(float factor);
+    bool isReady() { return scale.is_ready(); }
     
     float getScaleFactor() { return scaleFactor; }
     long getOffset() { return offset; }

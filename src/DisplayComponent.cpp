@@ -30,12 +30,12 @@ void DisplayComponent::begin() {
     }
 }
 
-void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, int currentId, bool commPulse, int calWeight) {
+void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, int currentId, bool commPulse, int calWeight, uint32_t rxCount, uint8_t lastByte) {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
     // 1. 始终绘制顶部状态栏
-    drawHeader(currentId, commPulse);
+    drawHeader(currentId, commPulse, rxCount, lastByte);
 
     // 2. 根据状态分发绘制页面内容
     switch (state) {
@@ -57,6 +57,9 @@ void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, i
         case STATE_COMM_TEST:
             drawPageCommTest(0, commPulse ? "Active" : "Idle"); // 临时兼容
             break;
+        case STATE_RS485_DIAG:
+            drawPageRS485Diag((uint8_t)calWeight, (uint8_t)rxCount); // 复用参数传输 TX/RX
+            break;
         default:
             break;
     }
@@ -64,9 +67,25 @@ void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, i
     display.display();
 }
 
-void DisplayComponent::drawHeader(int id, bool commActive) {
-    // 将 ID 移到右上角，改为 # 符号，恢复为 TextSize(1)
+void DisplayComponent::drawHeader(int id, bool commActive, uint32_t rxCount, uint8_t lastByte) {
     display.setTextSize(1);
+    
+    // 增加 RX 字节显示 (左侧)
+    display.setCursor(0, 0);
+    display.print("RX:");
+    display.print(rxCount);
+
+    // 在非诊断模式下显示 HEX 调试信息
+    if (display.getCursorY() < 10) { // 简单判断 Y 坐标防止重叠
+        // 这里原逻辑是显示 HEX，但为了清爽，诊断模式下可以不显示 header 详情
+    }
+
+    // 在 RX 下方显示最后一个字节的 16 进制值
+    display.setCursor(0, 8);
+    if (lastByte < 0x10) display.print("0");
+    display.print(lastByte, HEX);
+
+    // 将 ID 移到右上角，改为 # 符号
     display.setCursor(104, 0);
     display.print("#");
     if (id < 10) display.print("0");
@@ -185,6 +204,27 @@ void DisplayComponent::drawPageCommTest(int txCount, String rxData) {
     display.setCursor(0, 22);
     display.print("DATA: ");
     display.print(rxData);
+}
+
+void DisplayComponent::drawPageRS485Diag(uint8_t tx, uint8_t rx) {
+    display.setCursor(0, 12);
+    display.setTextSize(1);
+    display.print("RS485 RAW TEST");
+    
+    display.setTextSize(2);
+    display.setCursor(0, 24);
+    display.print("TX:");
+    if (tx < 0x10) display.print("0");
+    display.print(tx, HEX);
+    
+    display.setCursor(64, 24);
+    display.print("RX:");
+    if (rx < 0x10) display.print("0");
+    display.print(rx, HEX);
+    
+    display.setTextSize(1);
+    display.setCursor(0, 48);
+    display.print("Sending 1Hz increment");
 }
 
 void DisplayComponent::showMessage(const char* msg, int duration) {
