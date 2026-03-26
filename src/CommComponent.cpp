@@ -47,6 +47,7 @@ void CommComponent::begin(uint8_t slaveId) {
     _mb.addHreg(REG_RAW_ADC_H, 0x0000, 2); // 连续 2 个寄存器存放 Int32 ADC
     _mb.addHreg(REG_CTRL_CMD, 0x0000);     // 命令控制寄存器
     _mb.addHreg(REG_ZTR_THRESH, 0x0002);   // 默认零点追踪死区为2g
+    _mb.addHreg(REG_DOOR_TIME, 1000);      // 默认开门等待 1000ms
 }
 
 void CommComponent::task() {
@@ -60,7 +61,15 @@ void CommComponent::updateWeight(float weight) {
     _mb.Hreg(REG_WEIGHT_L, regs[1]);
 }
 
-void CommComponent::updateStatus(uint16_t status) {
+void CommComponent::updateStatus(uint8_t sysState, bool stable, uint8_t doorPhase) {
+    // REG_STATUS (0x0002):
+    // Bits 0-7: SystemState
+    // Bit 8: Stable Flag
+    // Bits 9-11: Door Phase (0-7)
+    uint16_t status = (uint16_t)sysState;
+    if (stable) status |= (1 << 8);
+    status |= ((doorPhase & 0x07) << 9);
+    
     _mb.Hreg(REG_STATUS, status);
 }
 
@@ -91,6 +100,14 @@ uint16_t CommComponent::getZtrThreshold() {
 
 void CommComponent::setZtrThreshold(uint16_t ztr) {
     _mb.Hreg(REG_ZTR_THRESH, ztr);
+}
+
+uint16_t CommComponent::getDoorTime() {
+    return _mb.Hreg(REG_DOOR_TIME);
+}
+
+void CommComponent::setDoorTime(uint16_t ms) {
+    _mb.Hreg(REG_DOOR_TIME, ms);
 }
 
 void CommComponent::sendRawByte(uint8_t b) {

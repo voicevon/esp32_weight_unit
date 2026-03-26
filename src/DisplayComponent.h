@@ -11,7 +11,9 @@ public:
     void begin();
     
     // 增强版更新函数：增加 rawADC 支持与最近字节 HUD
-    void update(SystemState state, float weight, int32_t rawADC = 0, int currentId = 1, bool commPulse = false, int calWeight = 0, uint32_t rxCount = 0, uint8_t lastByte = 0x00);
+    void update(SystemState state, float weight, int32_t rawADC, int currentId, 
+                bool commPulse, int displayParam, uint32_t rxCount, uint8_t lastByte,
+                bool stable = false, uint8_t doorPhase = 0);
     
     void showMessage(const char* msg, int duration = 500);
     void showLargeMessage(const char* msg, int duration = 500);
@@ -24,7 +26,7 @@ private:
 
     // 内部私有绘图模块
     void drawHeader(int id, bool commActive, uint32_t rxCount, uint8_t lastByte);
-    void drawPageRun(float weight, SystemState state, int32_t rawADC);
+    void drawPageRun(float weight, SystemState state, int32_t rawADC, bool stable, uint8_t doorPhase);
     void drawPageConfig(int id);
     void drawPageConfigZTR(int ztr);
     void drawPageCalibrate(SystemState state, int calWeight, int32_t rawADC);

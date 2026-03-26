@@ -9,6 +9,7 @@ public:
     ScaleComponent(int dtPin, int sckPin);
     void begin();
     float getWeight(int samples = 5);
+    bool isStable(float threshold = 0.5f); // Check if the last readings are within threshold
     void tare();
     void calibrate(int knownWeight);
     void setScale(float factor);
@@ -24,6 +25,12 @@ private:
     int _dtPin, _sckPin;
     float scaleFactor;
     long offset;
+    
+    // Stability tracking
+    static const int HISTORY_SIZE = 10;
+    float weightHistory[HISTORY_SIZE];
+    int historyIndex;
+    bool historyFull;
 
     void saveCalibration();
     void loadCalibration();

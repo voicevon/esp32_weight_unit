@@ -11,7 +11,8 @@ MainController::MainController(ScaleComponent& scale, DisplayComponent& display,
       _btnPressStart(0), _lastBtnRelease(0), _btnPressed(false), 
       _longPressHandled(false), _servoIsOpen(false),
       _lastUpdateMillis(0), _lastDiagMillis(0), _diagTxValue(0), _diagRxValue(0),
-      _txCount(0), _rxData("") {}
+      _txCount(0), _rxData(""),
+      _doorPhase(0), _doorTimer(0), _doorWaitTime(1000) {}
 
 void MainController::begin() {
     pinMode(_buttonPin, INPUT_PULLUP);
@@ -22,6 +23,7 @@ void MainController::begin() {
     _currentId = _prefs.getInt("slave_id", 1); // Default to 1
     
     _ztrThreshold = _prefs.getInt("ztr_thresh", 2); // Default to 2g
+    _doorWaitTime = _prefs.getInt("door_time", 1000); // Default to 1s
     if (_ztrThreshold == 0) _ztrIndex = 0;
     else if (_ztrThreshold <= 2) _ztrIndex = 1;
     else if (_ztrThreshold <= 5) _ztrIndex = 2;
@@ -33,6 +35,7 @@ void MainController::begin() {
     _scale.begin();
     _comm.begin(_currentId); // 初始化 Modbus Slave
     _comm.setZtrThreshold(_ztrThreshold); // 同步初始门限到 Modbus
+    _comm.setDoorTime(_doorWaitTime);     // 同步初始开门时间
     
     _display.showMessage("System Ready!", 1000);
 }
@@ -73,9 +76,24 @@ void MainController::loop() {
         _lastUpdateMillis = now;
         bool commActive = (_comm.getControlCommand() != 0); // 若有指令则闪烁
         
-        // 同步实时重量到 Modbus 寄存器
+        // --- 门逻辑状态机 (Door State Machine) ---
+        if (_doorPhase == 1) { // OPENING
+            _servo.write(90);
+            _doorTimer = now;
+            _doorPhase = 2; // Transition to WAITING
+        } else if (_doorPhase == 2) { // WAITING
+            if (now - _doorTimer >= _doorWaitTime) {
+                _doorPhase = 3; // DONE
+            }
+        }
+        // NOTE: Done Phase (3) stays until a new command or a reset. 
+        // We'll reset to IDLE when any other command is received or loop handles it.
+
+        bool stable = _scale.isStable(0.5f);
+
+        // 同步实时重量、状态（含稳定性、门相位）到 Modbus 寄存器
         _comm.updateWeight(currentWeight);
-        _comm.updateStatus((uint16_t)_currentState);
+        _comm.updateStatus((uint8_t)_currentState, stable, _doorPhase);
         
         uint32_t rxBytes = _comm.getRxByteCount();
         uint8_t lastByte = _comm.getLastRxByte();
@@ -97,7 +115,7 @@ void MainController::loop() {
             _display.updateViewCalib(scaleF, _scale.getOffset());
         } else {
             int displayParam = (_currentState == STATE_CONFIG_ZTR) ? _ztrOptions[_ztrIndex] : _calWeights[_calWeightIndex];
-            _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam, rxBytes, lastByte);
+            _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam, rxBytes, lastByte, stable, _doorPhase);
         }
     }
 }
@@ -198,14 +216,24 @@ void MainController::handleComm() {
         else _ztrIndex = 3;
     }
 
+    // 监听主站是否修改了开门时间
+    uint16_t modbusDoorTime = _comm.getDoorTime();
+    if (modbusDoorTime != _doorWaitTime) {
+        _doorWaitTime = modbusDoorTime;
+        _prefs.putInt("door_time", _doorWaitTime);
+    }
+
     // 轮询控制寄存器
     uint16_t cmd = _comm.getControlCommand();
     if (cmd == 0) return;
 
-    if (cmd == 1) { // OPEN
-        _servo.write(90);
+    if (cmd == 1) { // OPEN (Starts Sequence)
+        if (_doorPhase == 0 || _doorPhase == 3) { // Only start if idle or previous done
+            _doorPhase = 1; // Trigger state machine
+        }
     } else if (cmd == 2) { // CLOSE
         _servo.write(0);
+        _doorPhase = 0; // Reset to IDLE
     } else if (cmd == 3) { // TARE
         _scale.tare();
     } else if (cmd == 4) { // CALIBRATE (可通过主控触发)
@@ -223,7 +251,7 @@ void MainController::handleCommTest() {
 
 void MainController::performCalibration(int weight) {
     _currentState = STATE_CALIBRATING;
-    _display.update(_currentState, 0, _scale.getRawValue(), _currentId, false, weight);
+    _display.update(_currentState, 0, _scale.getRawValue(), _currentId, false, weight, _comm.getRxByteCount(), _comm.getLastRxByte());
     
     unsigned long start = millis();
     while (millis() - start < 1000) {

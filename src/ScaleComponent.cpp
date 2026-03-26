@@ -2,7 +2,10 @@
 #include <Arduino.h>
 
 ScaleComponent::ScaleComponent(int dtPin, int sckPin) 
-    : _dtPin(dtPin), _sckPin(sckPin), scaleFactor(1.0), offset(0) {}
+    : _dtPin(dtPin), _sckPin(sckPin), scaleFactor(1.0), offset(0), 
+      historyIndex(0), historyFull(false) {
+    for (int i = 0; i < HISTORY_SIZE; i++) weightHistory[i] = 0.0f;
+}
 
 void ScaleComponent::begin() {
     scale.begin(_dtPin, _sckPin);
@@ -21,9 +24,31 @@ void ScaleComponent::begin() {
 
 float ScaleComponent::getWeight(int samples) {
     if (scale.is_ready()) {
-        return scale.get_units(samples);
+        float w = scale.get_units(samples);
+        
+        // Update history
+        weightHistory[historyIndex] = w;
+        historyIndex = (historyIndex + 1) % HISTORY_SIZE;
+        if (historyIndex == 0) historyFull = true;
+        
+        return w;
     }
     return 0.0;
+}
+
+bool ScaleComponent::isStable(float threshold) {
+    if (!historyFull && historyIndex < 5) return false; // Not enough data
+    
+    int count = historyFull ? HISTORY_SIZE : historyIndex;
+    float minW = weightHistory[0];
+    float maxW = weightHistory[0];
+    
+    for (int i = 1; i < count; i++) {
+        if (weightHistory[i] < minW) minW = weightHistory[i];
+        if (weightHistory[i] > maxW) maxW = weightHistory[i];
+    }
+    
+    return (maxW - minW) <= threshold;
 }
 
 void ScaleComponent::tare() {

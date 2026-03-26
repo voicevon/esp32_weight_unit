@@ -30,7 +30,9 @@ void DisplayComponent::begin() {
     }
 }
 
-void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, int currentId, bool commPulse, int calWeight, uint32_t rxCount, uint8_t lastByte) {
+void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, int currentId, 
+                              bool commPulse, int calWeight, uint32_t rxCount, uint8_t lastByte,
+                              bool stable, uint8_t doorPhase) {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
@@ -40,7 +42,7 @@ void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, i
     // 2. 根据状态分发绘制页面内容
     switch (state) {
         case STATE_RUN:
-            drawPageRun(weight, state, rawADC);
+            drawPageRun(weight, state, rawADC, stable, doorPhase);
             break;
         case STATE_MENU_SELECT_WEIGHT:
             drawPageCalibrate(state, calWeight, rawADC);
@@ -96,7 +98,14 @@ void DisplayComponent::drawHeader(int id, bool commActive, uint32_t rxCount, uin
     }
 }
 
-void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawADC) {
+void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawADC, bool stable, uint8_t doorPhase) {
+    // 稳定性指示器 (左上角，重量上方)
+    if (stable) {
+        display.setTextSize(1);
+        display.setCursor(0, 16);
+        display.print("(STABLE)");
+    }
+
     // 格式化重量，只保留整数部分，向右对齐至 X=76
     char weightStr[16];
     sprintf(weightStr, "%4.0f", weight);
@@ -117,7 +126,12 @@ void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawA
     display.setCursor(startX, 24);
     display.print(adStr);
 
-    // 已根据要求移除右下方的 HLD:TARE 提示，保持界面极简
+    // 门状态显示 (右侧中部)
+    display.setTextSize(1);
+    display.setCursor(84, 16);
+    if (doorPhase == 1) display.print("OPEN..");
+    else if (doorPhase == 2) display.print("WAIT..");
+    else if (doorPhase == 3) display.print("DONE");
 }
 
 void DisplayComponent::drawPageConfig(int id) {

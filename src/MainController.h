@@ -39,6 +39,11 @@ private:
     bool _longPressHandled;
     bool _servoIsOpen;
     
+    // Door sequence management
+    uint8_t _doorPhase; // 0: IDLE, 1: OPENING, 2: WAITING, 3: DONE
+    unsigned long _doorTimer;
+    uint16_t _doorWaitTime;
+
     // Communication Test / RS485 Diag
     unsigned long _lastUpdateMillis;
     unsigned long _lastDiagMillis;

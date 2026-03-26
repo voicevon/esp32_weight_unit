@@ -12,6 +12,7 @@
 #define REG_RAW_ADC_L   0x0004
 #define REG_CTRL_CMD    0x0100
 #define REG_ZTR_THRESH  0x0101 // 零飘追踪死区阈值
+#define REG_DOOR_TIME   0x0102 // 开门等待时间 (ms)
 
 class CommComponent {
 public:
@@ -21,7 +22,7 @@ public:
 
     // 数据同步接口
     void updateWeight(float weight);
-    void updateStatus(uint16_t status);
+    void updateStatus(uint8_t sysState, bool stable, uint8_t doorPhase);
     void updateRawADC(int32_t raw);
     
     uint32_t getRxByteCount();
@@ -38,6 +39,10 @@ public:
     // 零飘阈值接口
     uint16_t getZtrThreshold();
     void setZtrThreshold(uint16_t ztr);
+    
+    // 开门时间接口
+    uint16_t getDoorTime();
+    void setDoorTime(uint16_t ms);
 
 private:
     int _rxPin, _txPin, _enPin;
