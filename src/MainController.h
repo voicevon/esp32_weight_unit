@@ -23,6 +23,7 @@ private:
     CommComponent& _comm;
     Servo _servo;
     int _buttonPin, _servoPin;
+    SemaphoreHandle_t _mutexComm;
     
     SystemState _currentState;
     int _calWeightIndex;
@@ -51,6 +52,9 @@ private:
     uint8_t _diagRxValue;
     int _txCount;
     String _rxData;
+
+    TaskHandle_t _commTaskHandle;
+    static void commTask(void* pvParameters);
 
     void handleButton();
     void handleComm();

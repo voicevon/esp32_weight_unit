@@ -33,15 +33,42 @@ void MainController::begin() {
     _display.showMessage("Wait HX711...", 0);
     
     _scale.begin();
+    
+    _mutexComm = xSemaphoreCreateMutex();
+    
+    xSemaphoreTake(_mutexComm, portMAX_DELAY);
     _comm.begin(_currentId); // 初始化 Modbus Slave
     _comm.setZtrThreshold(_ztrThreshold); // 同步初始门限到 Modbus
     _comm.setDoorTime(_doorWaitTime);     // 同步初始开门时间
+    xSemaphoreGive(_mutexComm);
     
     _display.showMessage("System Ready!", 1000);
+
+    // Start Modbus task on Core 0 with high priority to ensure responsiveness
+    xTaskCreatePinnedToCore(
+        commTask,
+        "ModbusTask",
+        4096,
+        this,
+        10, // High priority
+        &_commTaskHandle,
+        0 // Core 0
+    );
+}
+
+void MainController::commTask(void* pvParameters) {
+    MainController* controller = (MainController*)pvParameters;
+    for(;;) {
+        if (xSemaphoreTake(controller->_mutexComm, pdMS_TO_TICKS(20)) == pdTRUE) {
+            controller->_comm.task();
+            xSemaphoreGive(controller->_mutexComm);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1)); // Yield to keep system stable
+    }
 }
 
 void MainController::loop() {
-    _comm.task(); // 维持 Modbus 协议栈运行
+    // _comm.task() is now handled by a dedicated background task on Core 0
     
     handleButton();
     if (_currentState == STATE_COMM_TEST) {
@@ -74,7 +101,21 @@ void MainController::loop() {
         }
 
         _lastUpdateMillis = now;
-        bool commActive = (_comm.getControlCommand() != 0); // 若有指令则闪烁
+        
+        uint32_t rxBytes = 0;
+        uint8_t lastByte = 0;
+        bool commActive = false;
+        bool stable = _scale.isStable(0.5f);
+
+        // Synchronize Modbus access
+        if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(10)) == pdTRUE) {
+            commActive = (_comm.getControlCommand() != 0); 
+            _comm.updateWeight(currentWeight);
+            _comm.updateStatus((uint8_t)_currentState, stable, _doorPhase);
+            rxBytes = _comm.getRxByteCount();
+            lastByte = _comm.getLastRxByte();
+            xSemaphoreGive(_mutexComm);
+        }
         
         // --- 门逻辑状态机 (Door State Machine) ---
         if (_doorPhase == 1) { // OPENING
@@ -86,17 +127,6 @@ void MainController::loop() {
                 _doorPhase = 3; // DONE
             }
         }
-        // NOTE: Done Phase (3) stays until a new command or a reset. 
-        // We'll reset to IDLE when any other command is received or loop handles it.
-
-        bool stable = _scale.isStable(0.5f);
-
-        // 同步实时重量、状态（含稳定性、门相位）到 Modbus 寄存器
-        _comm.updateWeight(currentWeight);
-        _comm.updateStatus((uint8_t)_currentState, stable, _doorPhase);
-        
-        uint32_t rxBytes = _comm.getRxByteCount();
-        uint8_t lastByte = _comm.getLastRxByte();
         
         if (_currentState == STATE_RS485_DIAG) {
             // 485 诊断逻辑：使用独立定时器每秒发送一个自增字节
@@ -133,7 +163,7 @@ void MainController::handleButton() {
         if (_currentState == STATE_RUN && _lastBtnRelease > 0 && (now - _lastBtnRelease < 400)) {
             _servoIsOpen = !_servoIsOpen;
             _servo.write(_servoIsOpen ? 90 : 0);
-            _display.showLargeMessage(_servoIsOpen ? "SRV ON" : "SRV OFF", 1000);
+            _display.showLargeMessage(_servoIsOpen ? "S-OPEN" : "S-CLOSE", 1000);
             
             _lastBtnRelease = 0;      // 消费掉这次点击记录
             _longPressHandled = true; // 拦截长按和松开逻辑
@@ -204,6 +234,8 @@ void MainController::handleButton() {
 }
 
 void MainController::handleComm() {
+    if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(10)) != pdTRUE) return;
+
     // 监听主站是否通过 Modbus 修改了零飘阈值
     uint16_t modbusZTR = _comm.getZtrThreshold();
     if (modbusZTR != _ztrThreshold) {
@@ -225,7 +257,10 @@ void MainController::handleComm() {
 
     // 轮询控制寄存器
     uint16_t cmd = _comm.getControlCommand();
-    if (cmd == 0) return;
+    if (cmd == 0) {
+        xSemaphoreGive(_mutexComm);
+        return;
+    }
 
     if (cmd == 1) { // OPEN (Starts Sequence)
         if (_doorPhase == 0 || _doorPhase == 3) { // Only start if idle or previous done
@@ -241,12 +276,13 @@ void MainController::handleComm() {
     }
 
     _comm.clearControlCommand(); // 指令已处理，回馈 (清零)
+    xSemaphoreGive(_mutexComm);
 }
 
 void MainController::handleCommTest() {
-    // 通信测试模式下，Modbus 仍在运行
+    // 通信测试模式下，Modbus 仍在运行 (由后台任务处理)
     _rxData = "MDBS RUNNING";
-    _txCount = 0; // 这里的计数器意义已变，可留空
+    _txCount = 0; 
 }
 
 void MainController::performCalibration(int weight) {
@@ -255,7 +291,8 @@ void MainController::performCalibration(int weight) {
     
     unsigned long start = millis();
     while (millis() - start < 1000) {
-        _comm.task();
+        // Modbus task is running in the background on Core 0
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     _scale.calibrate(weight);
