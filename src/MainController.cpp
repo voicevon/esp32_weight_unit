@@ -12,7 +12,8 @@ MainController::MainController(ScaleComponent& scale, DisplayComponent& display,
       _longPressHandled(false), _servoIsOpen(false),
       _lastUpdateMillis(0), _lastDiagMillis(0), _diagTxValue(0), _diagRxValue(0),
       _txCount(0), _rxData(""),
-      _doorPhase(0), _doorTimer(0), _doorWaitTime(1000) {}
+      _doorPhase(0), _doorTimer(0), _doorWaitTime(1000),
+      _calTimer(0), _calTargetWeight(0) {}
 
 void MainController::begin() {
     pinMode(_buttonPin, INPUT_PULLUP);
@@ -86,18 +87,25 @@ void MainController::loop() {
         float scaleF = _scale.getScaleFactor();
 
         if (_scale.isReady()) {
-            rawADC = _scale.getRawValue(); // 安全读取
+            rawADC = _scale.getRawValue();
             lastRawADC = rawADC;
             
-            if (abs(scaleF) > 0.001) {
-                currentWeight = (float)(rawADC - _scale.getOffset()) / scaleF;
-                
-                // 防零飘死区 (Zero Tracking Deadband)
-                if (abs(currentWeight) <= (float)_ztrThreshold) {
-                    currentWeight = 0.0;
-                }
+            // 重要修复：通过原始 ADC 直接换算重量并填入历史记录队列，彻底避免重复拉高引脚导致的 Race Condition 阻塞
+            currentWeight = _scale.calculateWeight(rawADC);
+            _scale.updateHistory(currentWeight);
+            
+            // 防零飘死区 (Zero Tracking Deadband)
+            if (abs(currentWeight) <= (float)_ztrThreshold) {
+                currentWeight = 0.0;
             }
             lastWeight = currentWeight;
+        } else {
+            // 增加硬件诊断
+            static unsigned long lastWarn = 0;
+            if (millis() - lastWarn > 5000) {
+                lastWarn = millis();
+                Serial.println("[ERROR] LoadCell DISCONNECTED or NOT READY!");
+            }
         }
 
         _lastUpdateMillis = now;
@@ -105,7 +113,11 @@ void MainController::loop() {
         uint32_t rxBytes = 0;
         uint8_t lastByte = 0;
         bool commActive = false;
-        bool stable = _scale.isStable(0.5f);
+        
+        // isStable 现在内部会处理 Ready 检查并打印诊断日志
+        // 动态容忍阈值：让判断条件与零点防抖一致 (例如 2.0g)，最低保证 1.5g 容忍度避免原生噪声永远报警
+        float stableThresh = (float)_ztrThreshold > 1.5f ? (float)_ztrThreshold : 1.5f;
+        bool stable = _scale.isStable(stableThresh);
 
         // Synchronize Modbus access
         if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -143,6 +155,15 @@ void MainController::loop() {
             _display.update(_currentState, 0, 0, _currentId, false, (int)_diagTxValue, (uint32_t)_diagRxValue, 0);
         } else if (_currentState == STATE_VIEW_CALIB) {
             _display.updateViewCalib(scaleF, _scale.getOffset());
+        } else if (_currentState == STATE_CALIBRATING) {
+            // 异步标定逻辑：等待 1 秒稳定时间
+            if (millis() - _calTimer >= 1000) {
+                _scale.calibrate(_calTargetWeight);
+                _currentState = STATE_VIEW_CALIB;
+                _display.showMessage("Calib Success", 1000);
+            } else {
+                _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, _calTargetWeight, rxBytes, lastByte, stable, _doorPhase);
+            }
         } else {
             int displayParam = (_currentState == STATE_CONFIG_ZTR) ? _ztrOptions[_ztrIndex] : _calWeights[_calWeightIndex];
             _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam, rxBytes, lastByte, stable, _doorPhase);
@@ -287,14 +308,7 @@ void MainController::handleCommTest() {
 
 void MainController::performCalibration(int weight) {
     _currentState = STATE_CALIBRATING;
-    _display.update(_currentState, 0, _scale.getRawValue(), _currentId, false, weight, _comm.getRxByteCount(), _comm.getLastRxByte());
-    
-    unsigned long start = millis();
-    while (millis() - start < 1000) {
-        // Modbus task is running in the background on Core 0
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    _scale.calibrate(weight);
-    _currentState = STATE_VIEW_CALIB; // 校准终了，自动跳转进参显示界面
+    _calTargetWeight = weight;
+    _calTimer = millis();
+    // 立即返回，不在互斥锁内等待。实际校验动作由 loop() 核心 1 完成。
 }

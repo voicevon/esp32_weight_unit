@@ -44,6 +44,11 @@ private:
     uint8_t _doorPhase; // 0: IDLE, 1: OPENING, 2: WAITING, 3: DONE
     unsigned long _doorTimer;
     uint16_t _doorWaitTime;
+    
+    // Calibration management (Async)
+    unsigned long _calTimer;
+    int _calTargetWeight;
+
 
     // Communication Test / RS485 Diag
     unsigned long _lastUpdateMillis;

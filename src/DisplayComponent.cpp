@@ -17,6 +17,7 @@ DisplayComponent::DisplayComponent(int width, int height, int sda, int scl)
 
 void DisplayComponent::begin() {
     Wire.begin(_sda, _scl);
+    Wire.setClock(400000); // 提升至 400kHz 减少 I2C 阻塞时间
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println(F("Display: SSD1306 Init Failed"));
     } else {
@@ -72,10 +73,13 @@ void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, i
 void DisplayComponent::drawHeader(int id, bool commActive, uint32_t rxCount, uint8_t lastByte) {
     display.setTextSize(1);
     
+    // 限制 RX 最大显示 999，超出自动清零
+    uint32_t displayRx = rxCount % 1000;
+    
     // 增加 RX 字节显示 (左侧)
     display.setCursor(0, 0);
     display.print("RX:");
-    display.print(rxCount);
+    display.print(displayRx);
 
     // 在非诊断模式下显示 HEX 调试信息
     if (display.getCursorY() < 10) { // 简单判断 Y 坐标防止重叠
@@ -99,11 +103,19 @@ void DisplayComponent::drawHeader(int id, bool commActive, uint32_t rxCount, uin
 }
 
 void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawADC, bool stable, uint8_t doorPhase) {
-    // 稳定性指示器 (左上角，重量上方)
+    // 稳定性指示器 (右下角显著显示，取代左上角)
+    display.setTextSize(1);
+    int statusX = 92;
+    int statusY = 23;
     if (stable) {
-        display.setTextSize(1);
-        display.setCursor(0, 16);
-        display.print("(STABLE)");
+        display.fillRect(statusX - 1, statusY - 1, 37, 9, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(statusX, statusY);
+        display.print("STABLE");
+        display.setTextColor(SSD1306_WHITE); // 恢复前景色
+    } else {
+        display.setCursor(statusX, statusY);
+        display.print("Unstab");
     }
 
     // 格式化重量，只保留整数部分，向右对齐至 X=76

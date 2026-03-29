@@ -25,19 +25,35 @@ void ScaleComponent::begin() {
 float ScaleComponent::getWeight(int samples) {
     if (scale.is_ready()) {
         float w = scale.get_units(samples);
-        
-        // Update history
-        weightHistory[historyIndex] = w;
-        historyIndex = (historyIndex + 1) % HISTORY_SIZE;
-        if (historyIndex == 0) historyFull = true;
-        
+        updateHistory(w);
         return w;
     }
     return 0.0;
 }
 
+float ScaleComponent::calculateWeight(long raw) {
+    float factor = scaleFactor;
+    if (factor == 0) factor = 1.0; // avoid div by zero
+    return (float)(raw - offset) / factor;
+}
+
+void ScaleComponent::updateHistory(float w) {
+    weightHistory[historyIndex] = w;
+    historyIndex = (historyIndex + 1) % HISTORY_SIZE;
+    if (historyIndex == 0) historyFull = true;
+}
+
 bool ScaleComponent::isStable(float threshold) {
-    if (!historyFull && historyIndex < 5) return false; // Not enough data
+    // 移除实时 is_ready() 判断，仅仅根据历史数组进行极差运算
+    static unsigned long lastLog = 0;
+    if (millis() - lastLog > 1000) {
+        lastLog = millis();
+        if (!historyFull && historyIndex < 5) {
+            Serial.printf("[STB_DIAG] Waiting for history... (%d/%d)\n", historyIndex, 5);
+        }
+    }
+
+    if (!historyFull && historyIndex < 5) return false; 
     
     int count = historyFull ? HISTORY_SIZE : historyIndex;
     float minW = weightHistory[0];
@@ -48,7 +64,15 @@ bool ScaleComponent::isStable(float threshold) {
         if (weightHistory[i] > maxW) maxW = weightHistory[i];
     }
     
-    return (maxW - minW) <= threshold;
+    float diff = maxW - minW;
+    bool stable = diff <= threshold;
+
+    if (millis() - lastLog <= 10) { // 如果上面刚好一秒，这里复用
+        Serial.printf("[STB_DIAG] Min:%.2f Max:%.2f Diff:%.2f (Thresh:%.2f) %s\n", 
+                      minW, maxW, diff, threshold, stable ? "STABLE" : "UNSTABLE");
+    }
+    
+    return stable;
 }
 
 void ScaleComponent::tare() {

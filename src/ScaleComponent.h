@@ -9,6 +9,8 @@ public:
     ScaleComponent(int dtPin, int sckPin);
     void begin();
     float getWeight(int samples = 5);
+    float calculateWeight(long raw);
+    void updateHistory(float w);
     bool isStable(float threshold = 0.5f); // Check if the last readings are within threshold
     void tare();
     void calibrate(int knownWeight);
