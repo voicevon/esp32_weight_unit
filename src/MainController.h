@@ -48,6 +48,7 @@ private:
     // Calibration management (Async)
     unsigned long _calTimer;
     int _calTargetWeight;
+    bool _pendingTare; // 异步去皮标志位
 
 
     // Communication Test / RS485 Diag

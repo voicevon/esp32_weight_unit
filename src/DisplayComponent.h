@@ -32,6 +32,7 @@ private:
     void drawPageCalibrate(SystemState state, int calWeight, int32_t rawADC);
     void drawPageCommTest(int txCount, String rxData);
     void drawPageRS485Diag(uint8_t tx, uint8_t rx);
+    void drawPageVersion();
 };
 
 #endif

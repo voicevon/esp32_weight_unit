@@ -9,7 +9,8 @@ enum SystemState {
     STATE_CONFIG_ID,
     STATE_CONFIG_ZTR,
     STATE_VIEW_CALIB,
-    STATE_RS485_DIAG
+    STATE_RS485_DIAG,
+    STATE_VERSION
 };
 
 #endif

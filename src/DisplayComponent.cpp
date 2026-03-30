@@ -63,6 +63,9 @@ void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, i
         case STATE_RS485_DIAG:
             drawPageRS485Diag((uint8_t)calWeight, (uint8_t)rxCount); // 复用参数传输 TX/RX
             break;
+        case STATE_VERSION:
+            drawPageVersion();
+            break;
         default:
             break;
     }
@@ -113,9 +116,6 @@ void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawA
         display.setCursor(statusX, statusY);
         display.print("STABLE");
         display.setTextColor(SSD1306_WHITE); // 恢复前景色
-    } else {
-        display.setCursor(statusX, statusY);
-        display.print("Unstab");
     }
 
     // 格式化重量，只保留整数部分，向右对齐至 X=76
@@ -273,4 +273,12 @@ void DisplayComponent::showLargeMessage(const char* msg, int duration) {
     display.print(msg);
     display.display();
     if (duration > 0) delay(duration);
+}
+
+void DisplayComponent::drawPageVersion() {
+    display.setTextSize(2);
+    // VER 263 is 7 chars. Size 2 width = 7 * 12 = 84px.
+    // Center X = (128 - 84) / 2 = 22.
+    display.setCursor(22, 10);
+    display.print("VER 263");
 }

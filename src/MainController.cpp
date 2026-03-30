@@ -13,7 +13,7 @@ MainController::MainController(ScaleComponent& scale, DisplayComponent& display,
       _lastUpdateMillis(0), _lastDiagMillis(0), _diagTxValue(0), _diagRxValue(0),
       _txCount(0), _rxData(""),
       _doorPhase(0), _doorTimer(0), _doorWaitTime(1000),
-      _calTimer(0), _calTargetWeight(0) {}
+      _calTimer(0), _calTargetWeight(0), _pendingTare(false) {}
 
 void MainController::begin() {
     pinMode(_buttonPin, INPUT_PULLUP);
@@ -136,6 +136,7 @@ void MainController::loop() {
             _doorPhase = 2; // Transition to WAITING
         } else if (_doorPhase == 2) { // WAITING
             if (now - _doorTimer >= _doorWaitTime) {
+                _servo.write(0); // 延时到期，自动关闭舵机
                 _doorPhase = 3; // DONE
             }
         }
@@ -167,6 +168,13 @@ void MainController::loop() {
         } else {
             int displayParam = (_currentState == STATE_CONFIG_ZTR) ? _ztrOptions[_ztrIndex] : _calWeights[_calWeightIndex];
             _display.update(_currentState, currentWeight, rawADC, _currentId, commActive, displayParam, rxBytes, lastByte, stable, _doorPhase);
+        }
+
+        // --- 异步清零逻辑 (Async Tare) ---
+        if (_pendingTare) {
+            _scale.tare(); 
+            _pendingTare = false;
+            _display.showMessage("Tare Done", 1000);
         }
     }
 }
@@ -220,6 +228,8 @@ void MainController::handleButton() {
                     performCalibration(targetW); // 标定完成后会自动进入 VIEW_CALIB
                 }
             } else if (_currentState == STATE_VIEW_CALIB) {
+                _currentState = STATE_VERSION;
+            } else if (_currentState == STATE_VERSION) {
                 _currentState = STATE_RUN; // 循环回到 RUN
                 _display.showMessage("RUN MODE", 1000);
             }
@@ -291,9 +301,13 @@ void MainController::handleComm() {
         _servo.write(0);
         _doorPhase = 0; // Reset to IDLE
     } else if (cmd == 3) { // TARE
-        _scale.tare();
+        _pendingTare = true; // 仅设置标志位，在 loop() 中异步执行
     } else if (cmd == 4) { // CALIBRATE (可通过主控触发)
         performCalibration(_calWeights[_calWeightIndex]);
+    } else if (cmd == 5) { // OPEN_1S (Pulse Open and Auto-Close)
+        if (_doorPhase == 0 || _doorPhase == 3) {
+            _doorPhase = 1; 
+        }
     }
 
     _comm.clearControlCommand(); // 指令已处理，回馈 (清零)
