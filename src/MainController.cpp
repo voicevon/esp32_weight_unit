@@ -131,11 +131,13 @@ void MainController::loop() {
         
         // --- 门逻辑状态机 (Door State Machine) ---
         if (_doorPhase == 1) { // OPENING
+            Serial.println("[SERVO] State: OPENING");
             _servo.write(90);
             _doorTimer = now;
             _doorPhase = 2; // Transition to WAITING
         } else if (_doorPhase == 2) { // WAITING
             if (now - _doorTimer >= _doorWaitTime) {
+                Serial.println("[SERVO] State: CLOSING");
                 _servo.write(0); // 延时到期，自动关闭舵机
                 _doorPhase = 3; // DONE
             }
@@ -295,17 +297,22 @@ void MainController::handleComm() {
 
     if (cmd == 1) { // OPEN (Starts Sequence)
         if (_doorPhase == 0 || _doorPhase == 3) { // Only start if idle or previous done
+            Serial.println("[MODBUS] CMD: OPEN");
             _doorPhase = 1; // Trigger state machine
         }
     } else if (cmd == 2) { // CLOSE
+        Serial.println("[MODBUS] CMD: CLOSE");
         _servo.write(0);
         _doorPhase = 0; // Reset to IDLE
     } else if (cmd == 3) { // TARE
+        Serial.println("[MODBUS] CMD: TARE (Remote)");
         _pendingTare = true; // 仅设置标志位，在 loop() 中异步执行
     } else if (cmd == 4) { // CALIBRATE (可通过主控触发)
+        Serial.println("[MODBUS] CMD: CALIBRATE");
         performCalibration(_calWeights[_calWeightIndex]);
     } else if (cmd == 5) { // OPEN_1S (Pulse Open and Auto-Close)
         if (_doorPhase == 0 || _doorPhase == 3) {
+            Serial.println("[MODBUS] CMD: OPEN_1S");
             _doorPhase = 1; 
         }
     }
