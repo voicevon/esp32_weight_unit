@@ -2,125 +2,108 @@
 #include <Arduino.h>
 
 ScaleComponent::ScaleComponent(int dtPin, int sckPin) 
-    : _dtPin(dtPin), _sckPin(sckPin), scaleFactor(1.0), offset(0), 
-      historyIndex(0), historyFull(false) {
-    for (int i = 0; i < HISTORY_SIZE; i++) weightHistory[i] = 0.0f;
+    : _dtPin(dtPin), _sckPin(sckPin), _scaleFactor(1.0), _offset(0), 
+      _currentWeight(0.0), _filteredWeight(0.0), _emaAlpha(0.3),
+      _historyIndex(0), _historyFull(false) {
+    for (int i = 0; i < HISTORY_SIZE; i++) _weightHistory[i] = 0.0f;
 }
 
 void ScaleComponent::begin() {
-    scale.begin(_dtPin, _sckPin);
+    _scale.begin(_dtPin, _sckPin);
     loadCalibration();
     
     unsigned long st = millis();
-    while(!scale.is_ready() && millis() - st < 2000) {
+    while(!_scale.is_ready() && millis() - st < 2000) {
         delay(10);
     }
-    if (scale.is_ready()) {
-        scale.tare();
-    } else {
-        Serial.println("Scale: HX711 not ready, skip tare() on boot");
+    if (_scale.is_ready()) {
+        _scale.tare();
+        _offset = _scale.get_offset();
     }
 }
 
-float ScaleComponent::getWeight(int samples) {
-    if (scale.is_ready()) {
-        float w = scale.get_units(samples);
-        updateHistory(w);
-        return w;
-    }
-    return 0.0;
-}
+void ScaleComponent::update(long raw) {
+    // 基础换算
+    float factor = _scaleFactor;
+    if (abs(factor) < 0.001) factor = 1.0;
+    _currentWeight = (float)(raw - _offset) / factor;
 
-float ScaleComponent::calculateWeight(long raw) {
-    float factor = scaleFactor;
-    if (factor == 0) factor = 1.0; // avoid div by zero
-    return (float)(raw - offset) / factor;
-}
+    // EMA 指数平滑滤波
+    _filteredWeight = (_emaAlpha * _currentWeight) + ((1.0f - _emaAlpha) * _filteredWeight);
 
-void ScaleComponent::updateHistory(float w) {
-    weightHistory[historyIndex] = w;
-    historyIndex = (historyIndex + 1) % HISTORY_SIZE;
-    if (historyIndex == 0) historyFull = true;
+    // 更新历史缓冲区 (用于稳定性判断)
+    _weightHistory[_historyIndex] = _filteredWeight;
+    _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
+    if (_historyIndex == 0) _historyFull = true;
 }
 
 bool ScaleComponent::isStable(float threshold) {
-    // 移除实时 is_ready() 判断，仅仅根据历史数组进行极差运算
-    static unsigned long lastLog = 0;
-    if (millis() - lastLog > 1000) {
-        lastLog = millis();
-        if (!historyFull && historyIndex < 5) {
-            Serial.printf("[STB_DIAG] Waiting for history... (%d/%d)\n", historyIndex, 5);
-        }
-    }
-
-    if (!historyFull && historyIndex < 5) return false; 
+    int count = _historyFull ? HISTORY_SIZE : _historyIndex;
+    if (count < 5) return false; // 样本数不足不判定为稳定
     
-    int count = historyFull ? HISTORY_SIZE : historyIndex;
-    float minW = weightHistory[0];
-    float maxW = weightHistory[0];
+    float minW = _weightHistory[0];
+    float maxW = _weightHistory[0];
     
     for (int i = 1; i < count; i++) {
-        if (weightHistory[i] < minW) minW = weightHistory[i];
-        if (weightHistory[i] > maxW) maxW = weightHistory[i];
+        if (_weightHistory[i] < minW) minW = _weightHistory[i];
+        if (_weightHistory[i] > maxW) maxW = _weightHistory[i];
     }
     
     float diff = maxW - minW;
     bool stable = diff <= threshold;
-
-    if (millis() - lastLog <= 10) { // 如果上面刚好一秒，这里复用
-        Serial.printf("[STB_DIAG] Min:%.2f Max:%.2f Diff:%.2f (Thresh:%.2f) %s\n", 
-                      minW, maxW, diff, threshold, stable ? "STABLE" : "UNSTABLE");
+    
+    // 诊断日志 (仅在非稳定或特定频率打印)
+    static unsigned long lastLog = 0;
+    if (millis() - lastLog > 500) {
+        lastLog = millis();
+        if (!stable) {
+            Serial.printf("[STB_DIAG] Diff:%.2f (Thresh:%.2f) UNSTABLE\n", diff, threshold);
+        }
     }
     
     return stable;
 }
 
 void ScaleComponent::tare() {
-    scale.tare();
-    offset = scale.get_offset();
+    _scale.tare();
+    _offset = _scale.get_offset();
+    _filteredWeight = 0; // 重置滤波值
     saveCalibration();
 }
 
 void ScaleComponent::calibrate(int knownWeight) {
     if (knownWeight <= 0) return;
-    long raw = scale.read_average(10);
-    offset = scale.get_offset();
+    long raw = _scale.read_average(10);
+    _offset = _scale.get_offset();
     
-    long diff = raw - offset;
-    // 安全防御：防止用户在放上砝码后不小心去皮，导致差值为 0，进而算出 0 或 NaN 系数
-    if (abs(diff) < 100) {
-        diff = 100; // 给定一个非0保护值
-    }
+    long diff = raw - _offset;
+    if (abs(diff) < 10) diff = 10; // 极小值保护
     
-    scaleFactor = (float)diff / (float)knownWeight;
-    if (abs(scaleFactor) < 0.001) scaleFactor = 1.0; // 最终防御
-    
-    scale.set_scale(scaleFactor);
+    _scaleFactor = (float)diff / (float)knownWeight;
+    _scale.set_scale(_scaleFactor);
     saveCalibration();
 }
 
 void ScaleComponent::setScale(float factor) {
-    if (factor == 0) return;
-    scaleFactor = factor;
-    scale.set_scale(scaleFactor);
+    if (abs(factor) < 0.001) return;
+    _scaleFactor = factor;
+    _scale.set_scale(_scaleFactor);
     saveCalibration();
 }
 
 void ScaleComponent::saveCalibration() {
-    preferences.begin("scale", false);
-    preferences.putFloat("factor", scaleFactor);
-    preferences.putLong("offset", offset);
-    preferences.end();
-    Serial.println("Scale: Calibration saved.");
+    _prefs.begin("scale", false);
+    _prefs.putFloat("factor", _scaleFactor);
+    _prefs.putLong("offset", _offset);
+    _prefs.end();
 }
 
 void ScaleComponent::loadCalibration() {
-    preferences.begin("scale", true);
-    scaleFactor = preferences.getFloat("factor", 1.0);
-    offset = preferences.getLong("offset", 0);
-    preferences.end();
+    _prefs.begin("scale", true);
+    _scaleFactor = _prefs.getFloat("factor", 1.0);
+    _offset = _prefs.getLong("offset", 0);
+    _prefs.end();
 
-    scale.set_scale(scaleFactor);
-    scale.set_offset(offset);
-    Serial.printf("Scale: Loaded Factor: %.2f, Offset: %ld\n", scaleFactor, offset);
+    _scale.set_scale(_scaleFactor);
+    _scale.set_offset(_offset);
 }

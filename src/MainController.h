@@ -2,13 +2,12 @@
 #define MAIN_CONTROLLER_H
 
 #include <Preferences.h>
-
+#include <ESP32Servo.h>
 #include "ScaleComponent.h"
 #include "DisplayComponent.h"
 #include "CommComponent.h"
 #include "SystemTypes.h"
 #include "config.h"
-#include <ESP32Servo.h>
 
 class MainController {
 public:
@@ -18,53 +17,54 @@ public:
     void loop();
 
 private:
+    // 组件引用
     ScaleComponent& _scale;
     DisplayComponent& _display;
     CommComponent& _comm;
     Servo _servo;
+    
+    // 硬件定义
     int _buttonPin, _servoPin;
     SemaphoreHandle_t _mutexComm;
-    
-    SystemState _currentState;
-    int _calWeightIndex;
-    int _currentId;
-    int _ztrThreshold;
-    int _ztrIndex;
-    const int _ztrOptions[4] = {0, 2, 5, 10};
     Preferences _prefs;
-    const int _calWeights[5] = {0, 100, 200, 500, 1000}; // added 0 = EXIT
+
+    // --- 核心状态变量 ---
+    SlaveState _state;       // 逻辑状态
+    UIMode _uiMode;         // UI 菜单模式
     
+    // --- 业务参数 ---
+    int _currentId;
+    int _ztrThreshold;      // 零漂阈值 (g)
+    int _doorWaitTime;      // 开门时间 (ms)
+    
+    // --- 状态机控制 ---
+    unsigned long _stateTimer;
+    bool _pendingTare;
+    int _calTargetWeight;
+    
+    // --- UI/交互变量 ---
+    unsigned long _lastUpdateMillis;
+    bool _btnPressed;
     unsigned long _btnPressStart;
     unsigned long _lastBtnRelease;
-    bool _btnPressed;
     bool _longPressHandled;
-    bool _servoIsOpen;
-    
-    // Door sequence management
-    uint8_t _doorPhase; // 0: IDLE, 1: OPENING, 2: WAITING, 3: DONE
-    unsigned long _doorTimer;
-    uint16_t _doorWaitTime;
-    
-    // Calibration management (Async)
-    unsigned long _calTimer;
-    int _calTargetWeight;
-    bool _pendingTare; // 异步去皮标志位
+    int _ztrIndex;
+    int _calWeightIndex;
 
+    const int _ztrOptions[4] = {0, 2, 5, 10};
+    const int _calWeights[5] = {0, 100, 200, 500, 1000};
 
-    // Communication Test / RS485 Diag
-    unsigned long _lastUpdateMillis;
-    unsigned long _lastDiagMillis;
-    uint8_t _diagTxValue;
-    uint8_t _diagRxValue;
-    int _txCount;
-    String _rxData;
-
+    // --- 任务句柄 ---
     TaskHandle_t _commTaskHandle;
     static void commTask(void* pvParameters);
 
-    void handleButton();
-    void handleComm();
-    void handleCommTest();
+    // --- 内部逻辑模块 ---
+    void handleSampling();   // 数据采样与滤波
+    void handleLogic();      // 核心业务状态机
+    void handleUI();         // 界面更新与按钮
+    void handleComm();       // Modbus 交互处理
+    
+    void updateState(SlaveState newState, const char* reason = "");
     void performCalibration(int weight);
 };
 

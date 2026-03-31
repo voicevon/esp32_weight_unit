@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ModbusRTU.h>
+#include "SystemTypes.h"
 
 // Modbus 寄存器地址定义 (基于设计文档)
 #define REG_WEIGHT_H    0x0000
@@ -13,6 +14,7 @@
 #define REG_CTRL_CMD    0x0100
 #define REG_ZTR_THRESH  0x0101 // 零飘追踪死区阈值
 #define REG_DOOR_TIME   0x0102 // 开门等待时间 (ms)
+#define REG_DATA_ID     0x0103 // 数据新鲜度 ID (每次下料更新)
 
 class CommComponent {
 public:
@@ -22,8 +24,9 @@ public:
 
     // 数据同步接口
     void updateWeight(float weight);
-    void updateStatus(uint8_t sysState, bool stable, uint8_t doorPhase);
+    void updateStatus(SlaveState sysState, bool stable);
     void updateRawADC(int32_t raw);
+    void incrementDataId(); // 更新数据新鲜度标签
     
     uint32_t getRxByteCount();
     uint8_t getLastRxByte();
@@ -36,11 +39,9 @@ public:
     uint16_t getControlCommand();
     void clearControlCommand();
     
-    // 零飘阈值接口
+    // 功能设置接口
     uint16_t getZtrThreshold();
     void setZtrThreshold(uint16_t ztr);
-    
-    // 开门时间接口
     uint16_t getDoorTime();
     void setDoorTime(uint16_t ms);
 
@@ -49,8 +50,8 @@ private:
     long _baud;
     uint8_t _slaveId;
     ModbusRTU _mb;
+    uint16_t _dataId;
 
-    // 辅助函数：Float 与 Uint16 互转（Modbus 常用）
     void floatToRegs(float val, uint16_t* regs);
 };
 

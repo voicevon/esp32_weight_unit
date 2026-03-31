@@ -1,262 +1,136 @@
 #include "DisplayComponent.h"
 #include <Wire.h>
 
-static String formatWithCommas(int32_t value) {
-    String numStr = String(value);
-    int insertPosition = numStr.length() - 3;
-    while (insertPosition > (value < 0 ? 1 : 0)) {
-        numStr = numStr.substring(0, insertPosition) + "," + numStr.substring(insertPosition);
-        insertPosition -= 3;
-    }
-    return numStr;
-}
-
 DisplayComponent::DisplayComponent(int width, int height, int sda, int scl)
     : _width(width), _height(height), _sda(sda), _scl(scl), 
       display(width, height, &Wire, -1) {}
 
 void DisplayComponent::begin() {
     Wire.begin(_sda, _scl);
-    Wire.setClock(400000); // 提升至 400kHz 减少 I2C 阻塞时间
+    Wire.setClock(400000);
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println(F("Display: SSD1306 Init Failed"));
     } else {
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
-        display.setTextSize(1);
-        display.setCursor(0,0);
-        display.println("Feng's Scale OS");
-        display.println("Initializing...");
         display.display();
     }
 }
 
-void DisplayComponent::update(SystemState state, float weight, int32_t rawADC, int currentId, 
-                              bool commPulse, int calWeight, uint32_t rxCount, uint8_t lastByte,
-                              bool stable, uint8_t doorPhase) {
+void DisplayComponent::update(UIMode mode, SlaveState state, float weight, int32_t rawADC, 
+                              int currentId, bool commPulse, int displayParam, bool stable) {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
-    // 1. 始终绘制顶部状态栏
-    drawHeader(currentId, commPulse, rxCount, lastByte);
+    drawHeader(currentId, commPulse);
 
-    // 2. 根据状态分发绘制页面内容
-    switch (state) {
-        case STATE_RUN:
-            drawPageRun(weight, state, rawADC, stable, doorPhase);
+    switch (mode) {
+        case UI_RUN:
+            drawPageRun(weight, state, rawADC, stable);
             break;
-        case STATE_MENU_SELECT_WEIGHT:
-            drawPageCalibrate(state, calWeight, rawADC);
-            break;
-        case STATE_CALIBRATING:
-            drawPageCalibrate(state, calWeight, rawADC);
-            break;
-        case STATE_CONFIG_ID:
+        case UI_CONFIG_ID:
             drawPageConfig(currentId);
             break;
-        case STATE_CONFIG_ZTR:
-            drawPageConfigZTR(calWeight); // 利用 calWeight 参数传递 ztr
+        case UI_CONFIG_ZTR:
+            drawPageConfigZTR(displayParam);
             break;
-        case STATE_COMM_TEST:
-            drawPageCommTest(0, commPulse ? "Active" : "Idle"); // 临时兼容
+        case UI_MENU_CALIB:
+            drawPageCalibrate(state, displayParam, rawADC);
             break;
-        case STATE_RS485_DIAG:
-            drawPageRS485Diag((uint8_t)calWeight, (uint8_t)rxCount); // 复用参数传输 TX/RX
-            break;
-        case STATE_VERSION:
+        case UI_VERSION:
             drawPageVersion();
             break;
-        default:
+        case UI_RS485_DIAG:
+            drawPageRS485Diag(displayParam >> 8, displayParam & 0xFF);
             break;
     }
 
     display.display();
 }
 
-void DisplayComponent::drawHeader(int id, bool commActive, uint32_t rxCount, uint8_t lastByte) {
+void DisplayComponent::drawHeader(int id, bool commActive) {
     display.setTextSize(1);
-    
-    // 限制 RX 最大显示 999，超出自动清零
-    uint32_t displayRx = rxCount % 1000;
-    
-    // 增加 RX 字节显示 (左侧)
-    display.setCursor(0, 0);
-    display.print("RX:");
-    display.print(displayRx);
-
-    // 在非诊断模式下显示 HEX 调试信息
-    if (display.getCursorY() < 10) { // 简单判断 Y 坐标防止重叠
-        // 这里原逻辑是显示 HEX，但为了清爽，诊断模式下可以不显示 header 详情
-    }
-
-    // 在 RX 下方显示最后一个字节的 16 进制值
-    display.setCursor(0, 8);
-    if (lastByte < 0x10) display.print("0");
-    display.print(lastByte, HEX);
-
-    // 将 ID 移到右上角，改为 # 符号
     display.setCursor(104, 0);
     display.print("#");
     if (id < 10) display.print("0");
     display.print(id);
-
-    if (commActive) {
-        display.print("*");
-    }
+    if (commActive) display.print("*");
 }
 
-void DisplayComponent::drawPageRun(float weight, SystemState state, int32_t rawADC, bool stable, uint8_t doorPhase) {
-    // 稳定性指示器 (右下角显著显示，取代左上角)
-    display.setTextSize(1);
-    int statusX = 92;
-    int statusY = 23;
+void DisplayComponent::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable) {
+    // 稳定性指示
     if (stable) {
-        display.fillRect(statusX - 1, statusY - 1, 37, 9, SSD1306_WHITE);
+        display.fillRect(92, 23, 36, 9, SSD1306_WHITE);
         display.setTextColor(SSD1306_BLACK);
-        display.setCursor(statusX, statusY);
+        display.setCursor(93, 24);
         display.print("STABLE");
-        display.setTextColor(SSD1306_WHITE); // 恢复前景色
+        display.setTextColor(SSD1306_WHITE);
     }
 
-    // 格式化重量，只保留整数部分，向右对齐至 X=76
-    char weightStr[16];
-    sprintf(weightStr, "%4.0f", weight);
-    int wWidth = strlen(weightStr) * 12; // Size 2
-    int wStartX = 76 - wWidth;
-    if (wStartX < 0) wStartX = 0;
-
+    // 重量显示
     display.setTextSize(2);
-    display.setCursor(wStartX, 2); // 整体向上移顶至 Y=2
-    display.print(weightStr);
+    display.setCursor(0, 4);
+    display.printf("%6.1f g", weight);
 
-    // 左下角显示原始采样 AD 值（去掉 AD: 前缀，右对齐到 X=76，恢复小号字体）
+    // 状态显示
     display.setTextSize(1);
-    String adStr = formatWithCommas(rawADC);
-    int textWidth = adStr.length() * 6; // Size 1 font width is 6px per char
-    int startX = 76 - textWidth;
-    if (startX < 0) startX = 0;
-    display.setCursor(startX, 24);
-    display.print(adStr);
+    display.setCursor(0, 24);
+    switch(state) {
+        case SLAVE_STANDBY: display.print("IDLE"); break;
+        case SLAVE_LOCKED: display.print("LOCKED"); break;
+        case SLAVE_DISCHARGING: display.print("OPENING"); break;
+        case SLAVE_RECOVERY: display.print("WAIT.."); break;
+        default: display.print("BUSY"); break;
+    }
 
-    // 门状态显示 (右侧中部)
-    display.setTextSize(1);
-    display.setCursor(84, 16);
-    if (doorPhase == 1) display.print("OPEN..");
-    else if (doorPhase == 2) display.print("WAIT..");
-    else if (doorPhase == 3) display.print("DONE");
+    // AD 原值
+    display.setCursor(0, 48);
+    display.printf("AD: %ld", rawADC);
 }
 
 void DisplayComponent::drawPageConfig(int id) {
-    display.setCursor(0, 12);
-    display.print("CHANGE ID > ");
+    display.setCursor(0, 16);
+    display.print("SET SLAVE ID:");
     display.setTextSize(2);
+    display.setCursor(40, 32);
     display.print(id);
-
-    // 已按照要求移除底部的操作提示，保持清爽
 }
 
 void DisplayComponent::drawPageConfigZTR(int ztr) {
-    display.setCursor(0, 12);
-    display.print("ZERO TRACK BAND>");
+    display.setCursor(0, 16);
+    display.print("ZERO TRACKING:");
     display.setTextSize(2);
-    if (ztr == 0) {
-        display.print("OFF");
-    } else {
-        display.print(ztr);
-        display.print("g");
-    }
+    display.setCursor(40, 32);
+    if (ztr == 0) display.print("OFF");
+    else display.printf("%d g", ztr);
 }
 
-void DisplayComponent::drawPageCalibrate(SystemState state, int calWeight, int32_t rawADC) {
-    if (state == STATE_MENU_SELECT_WEIGHT) {
-        display.setCursor(0, 0); // 往上移以便塞下AD值
-        display.print("CALIBRATE WT:");
-        display.setCursor(20, 12);
-        display.print("-> ");
-        display.setTextSize(1); 
-        if (calWeight == 0) {
-            display.print("EXIT");
-        } else {
-            display.print(calWeight);
-            display.print(" g");
-        }
-        
-        // 左下角显示 AD 值
-        String adStr = formatWithCommas(rawADC);
-        int textWidth = adStr.length() * 6;
-        int startX = 76 - textWidth;
-        if (startX < 0) startX = 0;
-        display.setCursor(startX, 24);
-        display.print(adStr);
-        
-    } else if (state == STATE_CALIBRATING) {
-        display.setCursor(10, 10);
-        display.print("CALIBRATING...");
-        
-        // 同时保留显示底部的 AD
-        String adStr = formatWithCommas(rawADC);
-        int textWidth = adStr.length() * 6;
-        int startX = 76 - textWidth;
-        if (startX < 0) startX = 0;
-        display.setCursor(startX, 24);
-        display.print(adStr);
-    }
-}
-
-void DisplayComponent::updateViewCalib(float factor, long offset) {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-    // 顶部标题
-    display.setTextSize(1);
+void DisplayComponent::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {
     display.setCursor(0, 0);
-    display.print("CALIB PARAMS [HOLD>]");
+    display.print("CALIBRATION");
+    display.setCursor(0, 16);
+    if (calWeight == 0) display.print("-> EXIT");
+    else display.printf("-> %d g", calWeight);
     
-    // 显示斜率 K (Scale Factor)
-    display.setCursor(0, 12);
-    display.print("Slope:");
-    display.print(factor, 4);
-    
-    // 显示偏移量 B (Offset)
-    display.setCursor(0, 24);
-    display.print("Offset:");
-    display.print(offset);
-    
-    display.display();
+    display.setCursor(0, 40);
+    display.printf("AD: %ld", rawADC);
 }
 
-void DisplayComponent::drawPageCommTest(int txCount, String rxData) {
-    display.setCursor(0, 12);
-    display.print("RS485 DIAG: OK");
-    display.setCursor(0, 22);
-    display.print("DATA: ");
-    display.print(rxData);
-}
-
-void DisplayComponent::drawPageRS485Diag(uint8_t tx, uint8_t rx) {
-    display.setCursor(0, 12);
-    display.setTextSize(1);
-    display.print("RS485 RAW TEST");
-    
+void DisplayComponent::drawPageVersion() {
     display.setTextSize(2);
-    display.setCursor(0, 24);
-    display.print("TX:");
-    if (tx < 0x10) display.print("0");
-    display.print(tx, HEX);
-    
-    display.setCursor(64, 24);
-    display.print("RX:");
-    if (rx < 0x10) display.print("0");
-    display.print(rx, HEX);
-    
-    display.setTextSize(1);
-    display.setCursor(0, 48);
-    display.print("Sending 1Hz increment");
+    display.setCursor(20, 24);
+    display.print("VER 2.5.REF");
+}
+
+void DisplayComponent::drawPageRS485Diag(int tx, int rx) {
+    display.setCursor(0, 16);
+    display.print("485 DIAG");
+    display.printf("\nTX: %02X  RX: %02X", tx, rx);
 }
 
 void DisplayComponent::showMessage(const char* msg, int duration) {
     display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(30, 12);
+    display.setCursor(20, 24);
     display.print(msg);
     display.display();
     if (duration > 0) delay(duration);
@@ -264,21 +138,16 @@ void DisplayComponent::showMessage(const char* msg, int duration) {
 
 void DisplayComponent::showLargeMessage(const char* msg, int duration) {
     display.clearDisplay();
-    display.setTextSize(3); // 每个大写字母宽度大约是 5*3=15，算上间距总计18
-    int textWidth = strlen(msg) * 18;
-    int startX = (128 - textWidth) / 2;
-    if (startX < 0) startX = 0;
-    
-    display.setCursor(startX, 6);
+    display.setTextSize(2);
+    display.setCursor(10, 24);
     display.print(msg);
     display.display();
     if (duration > 0) delay(duration);
 }
 
-void DisplayComponent::drawPageVersion() {
-    display.setTextSize(2);
-    // VER 263 is 7 chars. Size 2 width = 7 * 12 = 84px.
-    // Center X = (128 - 84) / 2 = 22.
-    display.setCursor(22, 10);
-    display.print("VER 263");
+void DisplayComponent::updateViewCalib(float factor, long offset) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.printf("K: %.4f\nB: %ld", factor, offset);
+    display.display();
 }
