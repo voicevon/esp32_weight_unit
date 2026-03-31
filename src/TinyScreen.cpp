@@ -1,15 +1,15 @@
-#include "DisplayComponent.h"
+#include "TinyScreen.h"
 #include <Wire.h>
 
-DisplayComponent::DisplayComponent(int width, int height, int sda, int scl)
+TinyScreen::TinyScreen(int width, int height, int sda, int scl)
     : _width(width), _height(height), _sda(sda), _scl(scl), 
       display(width, height, &Wire, -1) {}
 
-void DisplayComponent::begin() {
+void TinyScreen::begin() {
     Wire.begin(_sda, _scl);
     Wire.setClock(400000);
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-        Serial.println(F("Display: SSD1306 Init Failed"));
+        Serial.println(F("TinyScreen: Init Failed"));
     } else {
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
@@ -17,8 +17,8 @@ void DisplayComponent::begin() {
     }
 }
 
-void DisplayComponent::update(UIMode mode, SlaveState state, float weight, int32_t rawADC, 
-                              int currentId, bool commPulse, int displayParam, bool stable) {
+void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t rawADC, 
+                        int currentId, bool commPulse, int displayParam, bool stable) {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
@@ -48,7 +48,7 @@ void DisplayComponent::update(UIMode mode, SlaveState state, float weight, int32
     display.display();
 }
 
-void DisplayComponent::drawHeader(int id, bool commActive) {
+void TinyScreen::drawHeader(int id, bool commActive) {
     display.setTextSize(1);
     display.setCursor(104, 0);
     display.print("#");
@@ -57,8 +57,7 @@ void DisplayComponent::drawHeader(int id, bool commActive) {
     if (commActive) display.print("*");
 }
 
-void DisplayComponent::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable) {
-    // 稳定性指示
+void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable) {
     if (stable) {
         display.fillRect(92, 23, 36, 9, SSD1306_WHITE);
         display.setTextColor(SSD1306_BLACK);
@@ -67,12 +66,10 @@ void DisplayComponent::drawPageRun(float weight, SlaveState state, int32_t rawAD
         display.setTextColor(SSD1306_WHITE);
     }
 
-    // 重量显示
     display.setTextSize(2);
     display.setCursor(0, 4);
     display.printf("%6.1f g", weight);
 
-    // 状态显示
     display.setTextSize(1);
     display.setCursor(0, 24);
     switch(state) {
@@ -83,12 +80,11 @@ void DisplayComponent::drawPageRun(float weight, SlaveState state, int32_t rawAD
         default: display.print("BUSY"); break;
     }
 
-    // AD 原值
     display.setCursor(0, 48);
     display.printf("AD: %ld", rawADC);
 }
 
-void DisplayComponent::drawPageConfig(int id) {
+void TinyScreen::drawPageConfig(int id) {
     display.setCursor(0, 16);
     display.print("SET SLAVE ID:");
     display.setTextSize(2);
@@ -96,7 +92,7 @@ void DisplayComponent::drawPageConfig(int id) {
     display.print(id);
 }
 
-void DisplayComponent::drawPageConfigZTR(int ztr) {
+void TinyScreen::drawPageConfigZTR(int ztr) {
     display.setCursor(0, 16);
     display.print("ZERO TRACKING:");
     display.setTextSize(2);
@@ -105,7 +101,7 @@ void DisplayComponent::drawPageConfigZTR(int ztr) {
     else display.printf("%d g", ztr);
 }
 
-void DisplayComponent::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {
+void TinyScreen::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {
     display.setCursor(0, 0);
     display.print("CALIBRATION");
     display.setCursor(0, 16);
@@ -116,19 +112,19 @@ void DisplayComponent::drawPageCalibrate(SlaveState state, int calWeight, int32_
     display.printf("AD: %ld", rawADC);
 }
 
-void DisplayComponent::drawPageVersion() {
+void TinyScreen::drawPageVersion() {
     display.setTextSize(2);
     display.setCursor(20, 24);
     display.print("VER 2.5.REF");
 }
 
-void DisplayComponent::drawPageRS485Diag(int tx, int rx) {
+void TinyScreen::drawPageRS485Diag(int tx, int rx) {
     display.setCursor(0, 16);
     display.print("485 DIAG");
     display.printf("\nTX: %02X  RX: %02X", tx, rx);
 }
 
-void DisplayComponent::showMessage(const char* msg, int duration) {
+void TinyScreen::showMessage(const char* msg, int duration) {
     display.clearDisplay();
     display.setCursor(20, 24);
     display.print(msg);
@@ -136,7 +132,7 @@ void DisplayComponent::showMessage(const char* msg, int duration) {
     if (duration > 0) delay(duration);
 }
 
-void DisplayComponent::showLargeMessage(const char* msg, int duration) {
+void TinyScreen::showLargeMessage(const char* msg, int duration) {
     display.clearDisplay();
     display.setTextSize(2);
     display.setCursor(10, 24);
@@ -145,7 +141,7 @@ void DisplayComponent::showLargeMessage(const char* msg, int duration) {
     if (duration > 0) delay(duration);
 }
 
-void DisplayComponent::updateViewCalib(float factor, long offset) {
+void TinyScreen::updateViewCalib(float factor, long offset) {
     display.clearDisplay();
     display.setCursor(0, 0);
     display.printf("K: %.4f\nB: %ld", factor, offset);

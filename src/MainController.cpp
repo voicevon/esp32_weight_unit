@@ -1,18 +1,17 @@
 #include "MainController.h"
 #include <Arduino.h>
 
-MainController::MainController(ScaleComponent& scale, DisplayComponent& display, 
-                               CommComponent& comm, int buttonPin, int servoPin)
-    : _scale(scale), _display(display), _comm(comm), 
+MainController::MainController(WeighingScale& scale, TinyScreen& oled, 
+                               ModbusSlave& modbus, int buttonPin, int servoPin)
+    : _scale(scale), _oled(oled), _modbus(modbus), _btn(buttonPin),
       _buttonPin(buttonPin), _servoPin(servoPin),
       _state(SLAVE_INIT), _uiMode(UI_RUN), _currentId(1),
       _ztrThreshold(2), _doorWaitTime(1000), _stateTimer(0),
       _pendingTare(false), _calTargetWeight(0), _lastUpdateMillis(0),
-      _btnPressed(false), _btnPressStart(0), _lastBtnRelease(0),
-      _longPressHandled(false), _ztrIndex(1), _calWeightIndex(0) {}
+      _ztrIndex(1), _calWeightIndex(0) {}
 
 void MainController::begin() {
-    pinMode(_buttonPin, INPUT_PULLUP);
+    _btn.begin();
     _servo.attach(_servoPin);
     _servo.write(0);
 
@@ -22,11 +21,11 @@ void MainController::begin() {
     _doorWaitTime = _prefs.getInt("door_time", 1000);
     _prefs.end();
 
-    _display.begin();
+    _oled.begin();
     _scale.begin();
-    _comm.begin(_currentId);
-    _comm.setZtrThreshold(_ztrThreshold);
-    _comm.setDoorTime(_doorWaitTime);
+    _modbus.begin(_currentId);
+    _modbus.setZtrThreshold(_ztrThreshold);
+    _modbus.setDoorTime(_doorWaitTime);
 
     _mutexComm = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(commTask, "ModbusTask", 4096, this, 10, &_commTaskHandle, 0);
@@ -38,7 +37,7 @@ void MainController::commTask(void* pvParameters) {
     MainController* instance = (MainController*)pvParameters;
     for(;;) {
         if (xSemaphoreTake(instance->_mutexComm, pdMS_TO_TICKS(20)) == pdTRUE) {
-            instance->_comm.task();
+            instance->_modbus.task();
             xSemaphoreGive(instance->_mutexComm);
         }
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -63,65 +62,44 @@ void MainController::handleLogic() {
     unsigned long now = millis();
 
     switch (_state) {
-        case SLAVE_STANDBY:
-            // 等待 Modbus 指令或按钮触发
-            break;
-
-        case SLAVE_LOCKED:
-            // 已被主站锁定，等待下料指令转换
-            break;
-
         case SLAVE_DISCHARGING:
             if (now - _stateTimer >= (unsigned long)_doorWaitTime) {
                 _servo.write(0);
-                updateState(SLAVE_RECOVERY, "Wait for mechanical settle");
+                updateState(SLAVE_RECOVERY);
             }
             break;
-
         case SLAVE_RECOVERY:
-            // 额外给 200ms 的震动消除期
-            if (now - _stateTimer >= 200) {
-                updateState(SLAVE_STANDBY, "Ready for next cycle");
-            }
+            if (now - _stateTimer >= 200) updateState(SLAVE_STANDBY);
             break;
-
-        case SLAVE_ZERO_TRACKING:
-            break;
-
         case SLAVE_CALIBRATING:
-            if (now - _stateTimer >= 1500) { // 增加标定前置抖动等待
+            if (now - _stateTimer >= 1500) {
                 _scale.calibrate(_calTargetWeight);
-                updateState(SLAVE_STANDBY, "Calibration Success");
+                updateState(SLAVE_STANDBY);
                 _uiMode = UI_RUN;
-                _display.showMessage("SUCCESS", 1000);
+                _oled.showMessage("SUCCESS", 1000);
             }
             break;
-
-        default:
-            break;
+        default: break;
     }
 
-    // 独立处理异步去皮请求
     if (_pendingTare) {
         _scale.tare();
         _pendingTare = false;
-        _display.showMessage("TARE OK", 800);
+        _oled.showMessage("TARE OK", 800);
     }
 }
 
 void MainController::handleComm() {
     if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(5)) != pdTRUE) return;
 
-    // 同步主机配置
-    uint16_t mZtr = _comm.getZtrThreshold();
+    uint16_t mZtr = _modbus.getZtrThreshold();
     if (mZtr != _ztrThreshold) {
         _ztrThreshold = mZtr;
         _prefs.begin("weight_unit", false);
         _prefs.putInt("ztr_thresh", _ztrThreshold);
         _prefs.end();
     }
-
-    uint16_t mDoor = _comm.getDoorTime();
+    uint16_t mDoor = _modbus.getDoorTime();
     if (mDoor != _doorWaitTime) {
         _doorWaitTime = mDoor;
         _prefs.begin("weight_unit", false);
@@ -129,104 +107,83 @@ void MainController::handleComm() {
         _prefs.end();
     }
 
-    // 处理控制指令
-    uint16_t cmd = _comm.getControlCommand();
+    uint16_t cmd = _modbus.getControlCommand();
     if (cmd != 0) {
-        if (cmd == 1 || cmd == 5) { // OPEN / OPEN_1S
+        if (cmd == 1 || cmd == 5) {
             if (_state == SLAVE_STANDBY || _state == SLAVE_LOCKED) {
                 _servo.write(90);
-                _comm.incrementDataId(); // 标记新一次下料动作，触发主站新鲜度检测
-                updateState(SLAVE_DISCHARGING, "Modbus OPEN");
+                _modbus.incrementDataId();
+                updateState(SLAVE_DISCHARGING);
             }
-        } else if (cmd == 2) { // CLOSE
+        } else if (cmd == 2) {
             _servo.write(0);
-            updateState(SLAVE_RECOVERY, "Modbus CLOSE");
-        } else if (cmd == 3) { // TARE
+            updateState(SLAVE_RECOVERY);
+        } else if (cmd == 3) {
             _pendingTare = true;
-        } else if (cmd == 4) { // CALIBRATE
+        } else if (cmd == 4) {
             performCalibration(_calWeights[_calWeightIndex]);
         }
-        _comm.clearControlCommand();
+        _modbus.clearControlCommand();
     }
 
-    // 同步状态到 Modbus
     float weight = _scale.getFilteredWeight();
-    // 零点死区掩盖
     if (abs(weight) < (float)_ztrThreshold) weight = 0.0f;
 
-    _comm.updateWeight(weight);
-    _comm.updateStatus(_state, _scale.isStable(2.0f)); // 2.0g 容忍度
-    _comm.updateRawADC(_scale.getRawValue());
+    _modbus.updateWeight(weight);
+    _modbus.updateStatus(_state, _scale.isStable(2.0f));
+    _modbus.updateRawADC(_scale.getRawValue());
 
     xSemaphoreGive(_mutexComm);
 }
 
 void MainController::handleUI() {
-    unsigned long now = millis();
+    ButtonEvent event = _btn.scan();
     
-    // 限制刷新率
-    if (now - _lastUpdateMillis >= 100) {
-        _lastUpdateMillis = now;
-        
-        // 按钮扫描逻辑
-        bool currentBtn = (digitalRead(_buttonPin) == LOW);
-        if (currentBtn && !_btnPressed) {
-            _btnPressed = true;
-            _btnPressStart = now;
-            _longPressHandled = false;
-        } else if (currentBtn && _btnPressed) {
-            if (!_longPressHandled && (now - _btnPressStart > 2000)) {
-                _longPressHandled = true;
-                _lastBtnRelease = 0;
-                // 长按切换模式
+    if (event != BTN_NONE) {
+        switch (event) {
+            case BTN_CLICK:
+                if (_uiMode == UI_RUN) _pendingTare = true;
+                else if (_uiMode == UI_CONFIG_ID) _currentId = (_currentId % 20) + 1;
+                else if (_uiMode == UI_CONFIG_ZTR) {
+                    _ztrIndex = (_ztrIndex + 1) % 4;
+                    _ztrThreshold = _ztrOptions[_ztrIndex];
+                } else if (_uiMode == UI_MENU_CALIB) {
+                    _calWeightIndex = (_calWeightIndex + 1) % 5;
+                }
+                break;
+                
+            case BTN_DOUBLE_CLICK:
+                if (_uiMode == UI_RUN) {
+                    _servo.write(90);
+                    updateState(SLAVE_DISCHARGING);
+                }
+                break;
+                
+            case BTN_LONG_PRESS:
                 if (_uiMode == UI_RUN) _uiMode = UI_CONFIG_ID;
                 else if (_uiMode == UI_CONFIG_ID) {
                     _prefs.begin("weight_unit", false);
                     _prefs.putInt("slave_id", _currentId);
                     _prefs.end();
-                    _comm.begin(_currentId);
+                    _modbus.begin(_currentId);
                     _uiMode = UI_CONFIG_ZTR;
-                } else if (_uiMode == UI_CONFIG_ZTR) {
-                    _uiMode = UI_MENU_CALIB;
-                } else if (_uiMode == UI_MENU_CALIB) {
+                } else if (_uiMode == UI_CONFIG_ZTR) _uiMode = UI_MENU_CALIB;
+                else if (_uiMode == UI_MENU_CALIB) {
                     int w = _calWeights[_calWeightIndex];
-                    if (w == 0) _uiMode = UI_VERSION;
+                    if (w == 0) _uiMode = UI_RUN;
                     else performCalibration(w);
-                } else {
-                    _uiMode = UI_RUN;
                 }
-            }
-        } else if (!currentBtn && _btnPressed) {
-            _btnPressed = false;
-            if (!_longPressHandled && (now - _btnPressStart > 30)) {
-                if (_uiMode == UI_RUN) {
-                    _lastBtnRelease = now;
-                } else {
-                    // 短按调整参数
-                    if (_uiMode == UI_CONFIG_ID) {
-                        if (++_currentId > 20) _currentId = 1;
-                    } else if (_uiMode == UI_CONFIG_ZTR) {
-                        _ztrIndex = (_ztrIndex + 1) % 4;
-                        _ztrThreshold = _ztrOptions[_ztrIndex];
-                    } else if (_uiMode == UI_MENU_CALIB) {
-                        _calWeightIndex = (_calWeightIndex + 1) % 5;
-                    }
-                }
-            }
-        } else if (!currentBtn && !_btnPressed) {
-            if (_lastBtnRelease > 0 && (now - _lastBtnRelease > 400)) {
-                _pendingTare = true; // 双击去皮
-                _lastBtnRelease = 0;
-            }
+                break;
+            default: break;
         }
+    }
 
-        // 刷新显示
-        int displayParam = 0;
-        if (_uiMode == UI_CONFIG_ZTR) displayParam = _ztrThreshold;
-        else if (_uiMode == UI_MENU_CALIB) displayParam = _calWeights[_calWeightIndex];
-        
-        _display.update(_uiMode, _state, _scale.getFilteredWeight(), _scale.getRawValue(), 
-                        _currentId, false, displayParam, _scale.isStable(2.0f));
+    unsigned long now = millis();
+    if (now - _lastUpdateMillis >= 100) {
+        _lastUpdateMillis = now;
+        _oled.update(_uiMode, _state, _scale.getFilteredWeight(), _scale.getRawValue(), 
+                        _currentId, false, (_uiMode == UI_CONFIG_ZTR ? _ztrThreshold : _calWeights[_calWeightIndex]), 
+                        _scale.isStable(2.0f));
     }
 }
 
@@ -234,10 +191,9 @@ void MainController::updateState(SlaveState newState, const char* reason) {
     if (_state == newState) return;
     _state = newState;
     _stateTimer = millis();
-    Serial.printf("[FSM] State -> %d (%s)\n", (int)newState, reason);
 }
 
 void MainController::performCalibration(int weight) {
     _calTargetWeight = weight;
-    updateState(SLAVE_CALIBRATING, "User Action");
+    updateState(SLAVE_CALIBRATING);
 }
