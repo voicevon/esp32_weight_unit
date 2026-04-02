@@ -97,10 +97,10 @@ void MainController::handleComm() {
 
     unsigned long now = millis();
 
-    // 链路统计逻辑：只要有读到数据就更新统计（用于显示链路层 RX）
+    // 链路统计逻辑 (修正版)：仅观察不读取，防止干扰协议栈
     if (_modbus.availableRaw()) {
-        while (_modbus.availableRaw()) {
-            _diagRxByte = _modbus.readRawByte();
+        _diagRxByte = 0xFF; // 仅作为信号标志
+        if (now - _lastUpdateMillis > 50) { 
             _diagRxCount = (_diagRxCount + 1) % 1000;
         }
     }

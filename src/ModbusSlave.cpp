@@ -19,7 +19,27 @@ void ModbusSlave::begin(uint8_t slaveId) {
 }
 
 void ModbusSlave::task() {
+    static unsigned long lastLog = 0;
+    static unsigned long lastBusActivity = 0;
+    static uint8_t rawBuf[16];
+    static int rawIdx = 0;
+    unsigned long now = millis();
+
+    // 1. 流量宏观监控 (修正版)：不读取数据，仅探测是否有数据进入，让协议栈由 _mb.task() 处理
+    if (Serial2.available()) {
+        lastBusActivity = now;
+    }
+
+    // 2. 协议栈处理
     _mb.task();
+
+    // 3. 周期性运行报告 (5s 一次)
+    if (now - lastLog > 5000) {
+        lastLog = now;
+        bool activeRecently = (now - lastBusActivity < 5000);
+        Serial.printf("[SLAVE %d] Heartbeat. Bus Latency: %ld ms, RS485 Pulse: %s\n", 
+                      _slaveId, (now - lastBusActivity), activeRecently ? "ACTIVE" : "IDLE");
+    }
 }
 
 void ModbusSlave::updateWeight(float weight) {
