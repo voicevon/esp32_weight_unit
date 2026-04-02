@@ -18,7 +18,8 @@ void TinyScreen::begin() {
 }
 
 void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t rawADC, 
-                        int currentId, bool commPulse, int displayParam, bool stable) {
+                        int currentId, bool commPulse, int displayParam, bool stable,
+                        uint8_t rxByte, uint16_t rxCount) {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
 
@@ -26,13 +27,13 @@ void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t raw
 
     switch (mode) {
         case UI_RUN:
-            drawPageRun(weight, state, rawADC, stable);
+            drawPageRun(weight, state, rawADC, stable, rxByte, rxCount);
             break;
         case UI_CONFIG_ID:
             drawPageConfig(currentId);
             break;
         case UI_CONFIG_ZTR:
-            drawPageConfigZTR(displayParam);
+            drawPageConfigZTR(displayParam, weight);
             break;
         case UI_MENU_CALIB:
             drawPageCalibrate(state, displayParam, rawADC);
@@ -57,46 +58,84 @@ void TinyScreen::drawHeader(int id, bool commActive) {
     if (commActive) display.print("*");
 }
 
-void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable) {
-    if (stable) {
-        display.fillRect(92, 23, 36, 9, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
-        display.setCursor(93, 24);
-        display.print("STABLE");
-        display.setTextColor(SSD1306_WHITE);
-    }
-
-    display.setTextSize(2);
-    display.setCursor(0, 4);
-    display.printf("%6.1f g", weight);
-
+void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable,
+                             uint8_t rxByte, uint16_t rxCount) {
+    // 1. 状态文字移至左上角 (0, 0)
     display.setTextSize(1);
-    display.setCursor(0, 24);
+    display.setCursor(0, 0);
     switch(state) {
         case SLAVE_STANDBY: display.print("IDLE"); break;
         case SLAVE_LOCKED: display.print("LOCKED"); break;
         case SLAVE_DISCHARGING: display.print("OPENING"); break;
         case SLAVE_RECOVERY: display.print("WAIT.."); break;
+        case SLAVE_CALIBRATING: display.print("CALIB"); break;
         default: display.print("BUSY"); break;
     }
 
-    display.setCursor(0, 48);
-    display.printf("AD: %ld", rawADC);
+    // 2. 稳定标志
+    if (stable) {
+        display.fillRect(80, 0, 20, 9, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(81, 1);
+        display.print("ST");
+        display.setTextColor(SSD1306_WHITE);
+    }
+
+    // 3. 核心重量显示 (居中)
+    display.setTextSize(2);
+    display.setCursor(10, 10);
+    display.printf("%6.1f g", weight);
+
+    // 4. 底部调试信息 (AD + RX)
+    display.setTextSize(1);
+    
+    // ADC 格式化 (千分位)
+    char adBuf[24];
+    String s = String(rawADC);
+    int len = s.length();
+    int start = (rawADC < 0) ? 1 : 0;
+    String formattedAd = "";
+    int count = 0;
+    for (int i = len - 1; i >= start; i--) {
+        formattedAd = s[i] + formattedAd;
+        count++;
+        if (count % 3 == 0 && i > start) {
+            formattedAd = "," + formattedAd;
+        }
+    }
+    if (start == 1) formattedAd = "-" + formattedAd;
+    
+    // 显示 AD
+    display.setCursor(0, 24);
+    display.printf("A:%s", formattedAd.c_str());
+
+    // 5. 链路层接收信息 RX [Byte] [Count]
+    display.setCursor(85, 24);
+    display.printf("R:%02X %03d", rxByte, rxCount % 1000);
 }
 
 void TinyScreen::drawPageConfig(int id) {
-    display.setCursor(0, 16);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
     display.print("SET SLAVE ID:");
+    
     display.setTextSize(2);
-    display.setCursor(40, 32);
+    display.setCursor(45, 12);
+    if (id < 10) display.print("0");
     display.print(id);
 }
 
-void TinyScreen::drawPageConfigZTR(int ztr) {
-    display.setCursor(0, 16);
-    display.print("ZERO TRACKING:");
+void TinyScreen::drawPageConfigZTR(int ztr, float currentWeight) {
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("ZERO TRACK");
+    
+    // 中间显示实时重量，方便观察
+    display.setCursor(70, 0);
+    display.printf("W:%4.1fg", currentWeight);
+    
     display.setTextSize(2);
-    display.setCursor(40, 32);
+    display.setCursor(35, 14);
     if (ztr == 0) display.print("OFF");
     else display.printf("%d g", ztr);
 }
@@ -119,9 +158,13 @@ void TinyScreen::drawPageVersion() {
 }
 
 void TinyScreen::drawPageRS485Diag(int tx, int rx) {
-    display.setCursor(0, 16);
-    display.print("485 DIAG");
-    display.printf("\nTX: %02X  RX: %02X", tx, rx);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("485 DIAGNOSTIC");
+    
+    display.setTextSize(2);
+    display.setCursor(0, 14);
+    display.printf("T:%02X R:%02X", tx, rx);
 }
 
 void TinyScreen::showMessage(const char* msg, int duration) {

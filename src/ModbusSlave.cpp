@@ -78,3 +78,20 @@ void ModbusSlave::floatToRegs(float val, uint16_t* regs) {
     regs[0] = converter.w[1];
     regs[1] = converter.w[0];
 }
+
+bool ModbusSlave::availableRaw() {
+    return Serial2.available() > 0;
+}
+
+uint8_t ModbusSlave::readRawByte() {
+    return Serial2.read();
+}
+
+void ModbusSlave::sendRawByte(uint8_t data) {
+    digitalWrite(_enPin, HIGH);
+    delayMicroseconds(50); 
+    Serial2.write(data);
+    Serial2.flush();       
+    delayMicroseconds(50);
+    digitalWrite(_enPin, LOW);
+}

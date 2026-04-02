@@ -43,6 +43,12 @@ private:
     int _ztrIndex;
     int _calWeightIndex;
 
+    // 链路诊断变量
+    uint8_t _diagTxCounter = 0;
+    uint8_t _diagRxByte = 0;
+    uint16_t _diagRxCount = 0;
+    unsigned long _lastDiagTime = 0;
+
     const int _ztrOptions[4] = {0, 2, 5, 10};
     const int _calWeights[5] = {0, 100, 200, 500, 1000};
 

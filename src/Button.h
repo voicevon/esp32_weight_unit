@@ -27,7 +27,7 @@ private:
     
     static const unsigned long DEBOUNCE_MS = 20;
     static const unsigned long LONG_PRESS_MS = 1500;
-    static const unsigned long DOUBLE_CLICK_TIMEOUT_MS = 400;
+    static const unsigned long DOUBLE_CLICK_TIMEOUT_MS = 200;
 };
 
 #endif

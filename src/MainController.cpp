@@ -37,7 +37,10 @@ void MainController::commTask(void* pvParameters) {
     MainController* instance = (MainController*)pvParameters;
     for(;;) {
         if (xSemaphoreTake(instance->_mutexComm, pdMS_TO_TICKS(20)) == pdTRUE) {
-            instance->_modbus.task();
+            // 诊模式下暂停 Modbus 协议栈处理，改为手动读写
+            if (instance->_uiMode != UI_RS485_DIAG) {
+                instance->_modbus.task();
+            }
             xSemaphoreGive(instance->_mutexComm);
         }
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -91,6 +94,30 @@ void MainController::handleLogic() {
 
 void MainController::handleComm() {
     if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(5)) != pdTRUE) return;
+
+    unsigned long now = millis();
+
+    // 链路统计逻辑：只要有读到数据就更新统计（用于显示链路层 RX）
+    if (_modbus.availableRaw()) {
+        while (_modbus.availableRaw()) {
+            _diagRxByte = _modbus.readRawByte();
+            _diagRxCount = (_diagRxCount + 1) % 1000;
+        }
+    }
+
+    // 链路诊断模式逻辑
+    if (_uiMode == UI_RS485_DIAG) {
+
+        // 发送逻辑：1Hz 递增字节
+        if (now - _lastDiagTime >= 1000) {
+            _lastDiagTime = now;
+            _diagTxCounter++;
+            _modbus.sendRawByte(_diagTxCounter);
+        }
+
+        xSemaphoreGive(_mutexComm);
+        return; 
+    }
 
     uint16_t mZtr = _modbus.getZtrThreshold();
     if (mZtr != _ztrThreshold) {
@@ -170,8 +197,10 @@ void MainController::handleUI() {
                 } else if (_uiMode == UI_CONFIG_ZTR) _uiMode = UI_MENU_CALIB;
                 else if (_uiMode == UI_MENU_CALIB) {
                     int w = _calWeights[_calWeightIndex];
-                    if (w == 0) _uiMode = UI_RUN;
+                    if (w == 0) _uiMode = UI_RS485_DIAG; // 标定退出后进入诊断
                     else performCalibration(w);
+                } else if (_uiMode == UI_RS485_DIAG) {
+                    _uiMode = UI_RUN; // 诊断退出回主界面
                 }
                 break;
             default: break;
@@ -181,9 +210,16 @@ void MainController::handleUI() {
     unsigned long now = millis();
     if (now - _lastUpdateMillis >= 100) {
         _lastUpdateMillis = now;
+        
+        int displayParam = 0;
+        if (_uiMode == UI_CONFIG_ZTR) displayParam = _ztrThreshold;
+        else if (_uiMode == UI_MENU_CALIB) displayParam = _calWeights[_calWeightIndex];
+        else if (_uiMode == UI_RS485_DIAG) displayParam = (_diagTxCounter << 8) | _diagRxByte;
+
+        // 重载 update 以传递 RX 字节和计数器（此处我们复用 displayParam 传递 Tx/Rx 对，另传 Count）
+        // 暂时直接调用 update，我们后续在 TinyScreen 中修改参数列表
         _oled.update(_uiMode, _state, _scale.getFilteredWeight(), _scale.getRawValue(), 
-                        _currentId, false, (_uiMode == UI_CONFIG_ZTR ? _ztrThreshold : _calWeights[_calWeightIndex]), 
-                        _scale.isStable(2.0f));
+                        _currentId, false, displayParam, _scale.isStable(2.0f), _diagRxByte, _diagRxCount);
     }
 }
 
