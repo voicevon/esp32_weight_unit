@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "../common/SystemTypes.h"
+#include "../hal/Button.h"
 
 /**
  * @class IModeHandler
@@ -16,7 +17,7 @@ public:
     virtual void enter() = 0;
 
     // 每一帧的逻辑更新
-    virtual void update() = 0;
+    virtual void update(ButtonEvent event) = 0;
 
     // 退出模式：释放资源、清理缓冲区
     virtual void exit() = 0;

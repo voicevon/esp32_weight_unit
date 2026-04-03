@@ -8,7 +8,7 @@ class ConfigIdHandler : public IModeHandler {
 public:
     ConfigIdHandler(SlaveApp* app);
     virtual void enter() override;
-    virtual void update() override;
+    virtual void update(ButtonEvent event) override;
     virtual void exit() override;
  
 private:

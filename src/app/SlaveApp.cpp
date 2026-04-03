@@ -14,7 +14,21 @@ void SlaveApp::begin() {
     _btn.begin();
     _oled.begin();
     _scale.begin();
-    _servo.attach(_servoPin);
+
+    // 显式分配 PWM 定时器，防止与其他外设冲突
+    ESP32PWM::allocateTimer(0);
+    ESP32PWM::allocateTimer(1);
+    ESP32PWM::allocateTimer(2);
+    ESP32PWM::allocateTimer(3);
+
+    _servo.setPeriodHertz(50);    // MG995 标准 50Hz
+    // 显式指定脉冲宽度范围 (500us - 2400us)
+    if (_servo.attach(_servoPin, 500, 2400)) {
+        Serial.printf("[SYSTEM] Servo attached to pin %d\n", _servoPin);
+    } else {
+        Serial.printf("[ERROR] Servo ATTACH FAILED on pin %d\n", _servoPin);
+    }
+
     _servo.write(0); // 初始关闭
     _servoOpen = false;
 
@@ -49,7 +63,7 @@ void SlaveApp::loop() {
     }
 
     if (_activeHandler) {
-        _activeHandler->update();
+        _activeHandler->update(event);
     }
 }
 
@@ -88,7 +102,11 @@ void SlaveApp::switchMode(UIMode next) {
         _activeHandler->enter();
     }
     
-    Serial.printf("[SYSTEM] Mode Switched to %d\n", next);
+    const char* modeNames[] = {
+        "RUN", "CONFIG_ID", "CONFIG_ZTR", "CONFIG_SERVO", 
+        "MENU_CALIB", "CALIB_RESULT", "RS485_DIAG", "VERSION"
+    };
+    Serial.printf("[SYSTEM] Mode Switched to %s\n", modeNames[next]);
 }
 
 void SlaveApp::toggleServo() {

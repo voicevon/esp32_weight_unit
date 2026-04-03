@@ -8,8 +8,8 @@ void CalibrationHandler::enter() {
     _timer = millis();
 }
 
-void CalibrationHandler::update() {
-    handleUI();
+void CalibrationHandler::update(ButtonEvent event) {
+    handleUI(event);
     handleCalib();
 }
 
@@ -18,10 +18,9 @@ void CalibrationHandler::exit() {
     _app->getScale().saveCalibration();
 }
 
-void CalibrationHandler::handleUI() {
+void CalibrationHandler::handleUI(ButtonEvent event) {
     // 监听按键切换标定砝码
-    ButtonEvent ev = _app->getButton().scan();
-    if (ev == BTN_CLICK) {
+    if (event == BTN_CLICK) {
         _calWeightIndex = (_calWeightIndex + 1) % 5;
     }
     

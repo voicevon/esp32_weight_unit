@@ -9,9 +9,8 @@ void ConfigIdHandler::enter() {
     _app->getOled().showMessage("SET ID MODE", 800);
 }
  
-void ConfigIdHandler::update() {
-    ButtonEvent ev = _app->getButton().scan();
-    if (ev == BTN_CLICK) {
+void ConfigIdHandler::update(ButtonEvent event) {
+    if (event == BTN_CLICK) {
         _tempId = (_tempId % 20) + 1;
         Serial.printf("[CONFIG] Temp ID: %d\n", _tempId);
     }

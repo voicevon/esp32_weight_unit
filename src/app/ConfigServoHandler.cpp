@@ -6,9 +6,8 @@ void ConfigServoHandler::enter() {
     _app->getOled().showMessage("SERVO TEST ON", 800);
 }
  
-void ConfigServoHandler::update() {
-    ButtonEvent ev = _app->getButton().scan();
-    if (ev == BTN_CLICK) {
+void ConfigServoHandler::update(ButtonEvent event) {
+    if (event == BTN_CLICK) {
         _app->toggleServo();
     }
  

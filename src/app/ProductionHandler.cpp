@@ -7,7 +7,12 @@ void ProductionHandler::enter() {
     _app->getOled().showMessage("NORMAL MODE", 800);
 }
 
-void ProductionHandler::update() {
+void ProductionHandler::update(ButtonEvent event) {
+    if (event == BTN_CLICK) {
+        _app->getScale().tare();
+        _app->getOled().showMessage("TARE OK", 800);
+    }
+
     handleSampling();
     handleLogic();
     handleComm();
