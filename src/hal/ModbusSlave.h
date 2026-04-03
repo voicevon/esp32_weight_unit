@@ -2,7 +2,7 @@
 #define MODBUS_SLAVE_H
 
 #include <Arduino.h>
-#include "SystemTypes.h"
+#include "../common/SystemTypes.h"
 
 // Modbus 寄存器地址定义 (与原定义保持一致)
 #define REG_WEIGHT_H    0x0000

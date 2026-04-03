@@ -45,7 +45,7 @@ void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t raw
             drawPageVersion();
             break;
         case UI_RS485_DIAG:
-            drawPageRS485Diag(displayParam >> 8, displayParam & 0xFF);
+            drawPageRS485Diag(displayParam, rxByte, rxCount);
             break;
     }
 
@@ -174,7 +174,7 @@ void TinyScreen::drawPageVersion() {
     display.print("VER 2.5.REF");
 }
 
-void TinyScreen::drawPageRS485Diag(int tx, int rx) {
+void TinyScreen::drawPageRS485Diag(int tx, uint8_t rx, uint16_t count) {
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.print("485 DIAGNOSTIC");
@@ -182,6 +182,10 @@ void TinyScreen::drawPageRS485Diag(int tx, int rx) {
     display.setTextSize(2);
     display.setCursor(0, 14);
     display.printf("T:%02X R:%02X", tx, rx);
+    
+    display.setTextSize(1);
+    display.setCursor(85, 24);
+    display.printf("#%04d", count);
 }
 
 void TinyScreen::showMessage(const char* msg, int duration) {

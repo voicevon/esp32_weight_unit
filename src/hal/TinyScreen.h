@@ -3,7 +3,7 @@
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "SystemTypes.h"
+#include "../common/SystemTypes.h"
 
 class TinyScreen {
 public:
@@ -30,7 +30,7 @@ private:
     void drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC);
     void drawPageCalibResult(float k, long b);
     void drawPageVersion();
-    void drawPageRS485Diag(int tx, int rx);
+    void drawPageRS485Diag(int tx, uint8_t rx, uint16_t count);
 };
 
 #endif

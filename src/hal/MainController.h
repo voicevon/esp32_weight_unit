@@ -7,8 +7,8 @@
 #include "TinyScreen.h"
 #include "ModbusSlave.h"
 #include "Button.h"
-#include "SystemTypes.h"
-#include "config.h"
+#include "../common/SystemTypes.h"
+#include "../common/config.h"
 
 class MainController {
 public:

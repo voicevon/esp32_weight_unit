@@ -1,8 +1,8 @@
 #include <Arduino.h>
-#include "WeighingScale.h"
-#include "TinyScreen.h"
-#include "ModbusSlave.h"
-#include "MainController.h"
+#include "hal/WeighingScale.h"
+#include "hal/TinyScreen.h"
+#include "hal/ModbusSlave.h"
+#include "app/SlaveApp.h"
 
 // ---------------------------
 // Pin & Configuration
@@ -20,7 +20,6 @@
 #define RS485_EN_PIN 21
 #define RS485_BAUD 9600
 
-#define SERVO_PIN 16
 #define BUTTON_PIN 25
 
 // ---------------------------
@@ -29,16 +28,17 @@
 WeighingScale scale(HX711_DT_PIN, HX711_SCK_PIN);
 TinyScreen oled(SCREEN_WIDTH, SCREEN_HEIGHT, I2C_SDA_PIN, I2C_SCL_PIN);
 ModbusSlave modbus(RS485_RX_PIN, RS485_TX_PIN, RS485_EN_PIN, RS485_BAUD);
-MainController controller(scale, oled, modbus, BUTTON_PIN, SERVO_PIN);
+SlaveApp app(scale, oled, modbus, BUTTON_PIN);
 
 // ---------------------------
 // Setup & Loop
 // ---------------------------
 void setup() {
     Serial.begin(115200);
-    controller.begin();
+    app.begin();
 }
 
 void loop() {
-    controller.loop();
+    app.loop();
 }
+

@@ -24,6 +24,8 @@ public:
     long getLastRaw() const { return _lastRaw; }
 
     void setScale(float factor);
+    void saveCalibration();
+    void loadCalibration();
 
 private:
     HX711 _scale;
@@ -43,8 +45,6 @@ private:
     int _historyIndex;
     bool _historyFull;
 
-    void saveCalibration();
-    void loadCalibration();
 };
 
 #endif
