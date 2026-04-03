@@ -56,6 +56,7 @@ private:
     uint8_t _rxBuf[128];
     int     _rxLen = 0;
     unsigned long _lastByteTime = 0;
+    unsigned long _firstByteTime = 0;
 
     // 内部处理函数
     uint16_t calculateCRC(uint8_t* buf, int len);

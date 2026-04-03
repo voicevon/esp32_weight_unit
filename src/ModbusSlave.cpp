@@ -60,6 +60,7 @@ void ModbusSlave::task() {
     // 1. 接收数据与 3.5T 判定
     while (Serial2.available()) {
         if (_rxLen < sizeof(_rxBuf)) {
+            if (_rxLen == 0) _firstByteTime = millis(); // 记录首字节到达时间 (证据：时效基准)
             _rxBuf[_rxLen++] = Serial2.read();
             _lastByteTime = micros();
         } else {
@@ -78,6 +79,14 @@ void ModbusSlave::task() {
 
 void ModbusSlave::processFrame() {
     if (_rxLen < 4) return; // 最小有效帧 [ID, FN, CRC16_L, CRC16_H]
+
+    // 时效性校验：如果收到首字节到现在超过 800ms，主站必然已判定超时。
+    // 这说明从机可能在采样或其他高频任务中发生阻塞。
+    // 为了避免回复包撞上主站发出的下一个轮询包，我们选择丢弃此请求包 (证据：防碰撞逻辑)。
+    if (millis() - _firstByteTime > 800) {
+        _rxLen = 0;
+        return;
+    }
 
     // 1. 检查 ID (0 为广播)
     if (_rxBuf[0] != _slaveId && _rxBuf[0] != 0x00) return;
