@@ -21,6 +21,7 @@
 #define RS485_BAUD 9600
 
 #define BUTTON_PIN 25
+#define SERVO_PIN 16
 
 // ---------------------------
 // Global Objects
@@ -28,7 +29,7 @@
 WeighingScale scale(HX711_DT_PIN, HX711_SCK_PIN);
 TinyScreen oled(SCREEN_WIDTH, SCREEN_HEIGHT, I2C_SDA_PIN, I2C_SCL_PIN);
 ModbusSlave modbus(RS485_RX_PIN, RS485_TX_PIN, RS485_EN_PIN, RS485_BAUD);
-SlaveApp app(scale, oled, modbus, BUTTON_PIN);
+SlaveApp app(scale, oled, modbus, BUTTON_PIN, SERVO_PIN);
 
 // ---------------------------
 // Setup & Loop

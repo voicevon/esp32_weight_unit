@@ -35,6 +35,9 @@ void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t raw
         case UI_CONFIG_ZTR:
             drawPageConfigZTR(displayParam, weight);
             break;
+        case UI_CONFIG_SERVO:
+            drawPageConfigServo(displayParam != 0);
+            break;
         case UI_MENU_CALIB:
             drawPageCalibrate(state, displayParam, rawADC);
             break;
@@ -145,6 +148,21 @@ void TinyScreen::drawPageConfigZTR(int ztr, float currentWeight) {
     display.setCursor(35, 14);
     if (ztr == 0) display.print("OFF");
     else display.printf("%d g", ztr);
+}
+
+void TinyScreen::drawPageConfigServo(bool isOpen) {
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("SERVO TEST");
+    
+    display.setTextSize(2);
+    display.setCursor(30, 14);
+    if (isOpen) display.print("OPEN");
+    else display.print("CLOSE");
+    
+    display.setTextSize(1);
+    display.setCursor(0, 24);
+    display.print("[CLICK] TO TOGGLE");
 }
 
 void TinyScreen::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {

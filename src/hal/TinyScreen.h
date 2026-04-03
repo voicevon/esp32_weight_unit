@@ -27,6 +27,7 @@ private:
                      uint8_t rxByte = 0, uint16_t rxCount = 0);
     void drawPageConfig(int id);
     void drawPageConfigZTR(int ztr, float currentWeight);
+    void drawPageConfigServo(bool enabled);
     void drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC);
     void drawPageCalibResult(float k, long b);
     void drawPageVersion();

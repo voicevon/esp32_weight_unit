@@ -29,7 +29,7 @@ void CalibrationHandler::handleUI() {
     unsigned long now = millis();
     _app->getOled().update(UI_MENU_CALIB, SLAVE_CALIBRATING, 
                           _app->getScale().getFilteredWeight(), 
-                          _app->getScale().getLastRaw(), 0, false, 
+                          _app->getScale().getLastRaw(), _app->getNodeId(), false, 
                           _calWeights[_calWeightIndex], false, 0, 0);
 }
 

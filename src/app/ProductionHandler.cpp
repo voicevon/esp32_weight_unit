@@ -63,7 +63,7 @@ void ProductionHandler::handleUI() {
         _lastUIUpdateMillis = now;
         WeighingScale& scale = _app->getScale();
         _app->getOled().update(UI_RUN, _state, scale.getFilteredWeight(), 
-                              scale.getLastRaw(), 0, false, 0, 
-                              scale.isStable(2.0f), 0, 0);
+                              scale.getLastRaw(), _app->getNodeId(), 
+                              false, 0, scale.isStable(2.0f), 0, 0);
     }
 }

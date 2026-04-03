@@ -40,6 +40,6 @@ void DiagnosticHandler::handleRawComm() {
 void DiagnosticHandler::handleUI() {
     // 诊断页面专用渲染
     // displayParam 传 txCounter, rxByte 和 rxCount 由 update 协议默认处理
-    _app->getOled().update(UI_RS485_DIAG, SLAVE_INIT, 0, 0, 0, false, 
+    _app->getOled().update(UI_RS485_DIAG, SLAVE_INIT, 0, 0, _app->getNodeId(), false, 
                           _txCounter, false, _rxByte, _rxCount);
 }
