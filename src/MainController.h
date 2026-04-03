@@ -39,7 +39,7 @@ private:
     bool _pendingTare;
     int _calTargetWeight;
     
-    unsigned long _lastUpdateMillis;
+    unsigned long _lastUIUpdateMillis = 0;
     int _ztrIndex;
     int _calWeightIndex;
 

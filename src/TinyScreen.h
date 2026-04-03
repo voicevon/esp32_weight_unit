@@ -28,6 +28,7 @@ private:
     void drawPageConfig(int id);
     void drawPageConfigZTR(int ztr, float currentWeight);
     void drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC);
+    void drawPageCalibResult(float k, long b);
     void drawPageVersion();
     void drawPageRS485Diag(int tx, int rx);
 };

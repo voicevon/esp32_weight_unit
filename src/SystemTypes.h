@@ -24,6 +24,7 @@ enum UIMode {
     UI_CONFIG_ID,       // 配置 ID
     UI_CONFIG_ZTR,      // 配置零漂
     UI_MENU_CALIB,      // 标定选择
+    UI_CALIB_RESULT,    // 标定结果显示 (K/B)
     UI_RS485_DIAG,      // 连接诊断
     UI_VERSION          // 版本查看
 };

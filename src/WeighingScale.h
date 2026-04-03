@@ -21,6 +21,7 @@ public:
     float getScaleFactor() const { return _scaleFactor; }
     long getOffset() const { return _offset; }
     long getRawValue() { return _scale.read(); }
+    long getLastRaw() const { return _lastRaw; }
 
     void setScale(float factor);
 
@@ -31,6 +32,7 @@ private:
     
     float _scaleFactor;
     long _offset;
+    long _lastRaw;
     
     float _currentWeight;
     float _filteredWeight;

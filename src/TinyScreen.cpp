@@ -38,6 +38,9 @@ void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t raw
         case UI_MENU_CALIB:
             drawPageCalibrate(state, displayParam, rawADC);
             break;
+        case UI_CALIB_RESULT:
+            drawPageCalibResult(weight, (long)rawADC);
+            break;
         case UI_VERSION:
             drawPageVersion();
             break;
@@ -90,24 +93,28 @@ void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, boo
     display.setTextSize(1);
     
     // ADC 格式化 (千分位)
-    char adBuf[24];
-    String s = String(rawADC);
-    int len = s.length();
-    int start = (rawADC < 0) ? 1 : 0;
-    String formattedAd = "";
-    int count = 0;
-    for (int i = len - 1; i >= start; i--) {
-        formattedAd = s[i] + formattedAd;
-        count++;
-        if (count % 3 == 0 && i > start) {
-            formattedAd = "," + formattedAd;
+    char rawStr[16];
+    char adBuf[32];
+    snprintf(rawStr, sizeof(rawStr), "%ld", rawADC);
+    
+    int len = strlen(rawStr);
+    int startIdx = (rawADC < 0) ? 1 : 0;
+    int destIdx = 0;
+    if (startIdx == 1) adBuf[destIdx++] = '-';
+    
+    int digits = len - startIdx;
+    for (int i = 0; i < digits; i++) {
+        adBuf[destIdx++] = rawStr[startIdx + i];
+        int remaining = digits - 1 - i;
+        if (remaining > 0 && remaining % 3 == 0) {
+            adBuf[destIdx++] = ',';
         }
     }
-    if (start == 1) formattedAd = "-" + formattedAd;
+    adBuf[destIdx] = '\0';
     
     // 显示 AD
     display.setCursor(0, 24);
-    display.printf("A:%s", formattedAd.c_str());
+    display.printf("A:%s", adBuf);
 
     // 5. 链路层接收信息 RX [Byte] [Count]
     display.setCursor(85, 24);
@@ -143,12 +150,22 @@ void TinyScreen::drawPageConfigZTR(int ztr, float currentWeight) {
 void TinyScreen::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {
     display.setCursor(0, 0);
     display.print("CALIBRATION");
-    display.setCursor(0, 16);
+    display.setCursor(0, 15);
     if (calWeight == 0) display.print("-> EXIT");
     else display.printf("-> %d g", calWeight);
     
-    display.setCursor(0, 40);
+    // Fixed coordinate: y=24 instead of 40 (screen is only 32px high)
+    display.setCursor(0, 24);
     display.printf("AD: %ld", rawADC);
+}
+
+void TinyScreen::drawPageCalibResult(float k, long b) {
+    display.setCursor(0, 0);
+    display.print("CALIB DONE! [OK]");
+    display.setCursor(0, 15);
+    display.printf("K: %.4f", k);
+    display.setCursor(0, 24);
+    display.printf("B: %ld", b);
 }
 
 void TinyScreen::drawPageVersion() {

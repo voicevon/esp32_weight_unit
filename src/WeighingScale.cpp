@@ -2,19 +2,22 @@
 #include <Arduino.h>
 
 WeighingScale::WeighingScale(int dtPin, int sckPin) 
-    : _dtPin(dtPin), _sckPin(sckPin), _scaleFactor(1.0), _offset(0), 
+    : _dtPin(dtPin), _sckPin(sckPin), _scaleFactor(1.0), _offset(0), _lastRaw(0),
       _currentWeight(0.0), _filteredWeight(0.0), _emaAlpha(0.3),
       _historyIndex(0), _historyFull(false) {
     for (int i = 0; i < HISTORY_SIZE; i++) _weightHistory[i] = 0.0f;
 }
 
 void WeighingScale::begin() {
+    pinMode(_dtPin, INPUT);
+    pinMode(_sckPin, OUTPUT);
     _scale.begin(_dtPin, _sckPin);
+    
     loadCalibration();
     
     unsigned long st = millis();
-    while(!_scale.is_ready() && millis() - st < 2000) {
-        delay(10);
+    while(!_scale.is_ready() && millis() - st < 1000) {
+        delay(5);
     }
     if (_scale.is_ready()) {
         _scale.tare();
@@ -23,6 +26,7 @@ void WeighingScale::begin() {
 }
 
 void WeighingScale::update(long raw) {
+    _lastRaw = raw; // 缓存最新读数
     float factor = _scaleFactor;
     if (abs(factor) < 0.001) factor = 1.0;
     _currentWeight = (float)(raw - _offset) / factor;
@@ -63,6 +67,8 @@ void WeighingScale::calibrate(int knownWeight) {
     if (abs(diff) < 10) diff = 10;
     _scaleFactor = (float)diff / (float)knownWeight;
     _scale.set_scale(_scaleFactor);
+    Serial.printf("[SCALE] Calibrate raw=%ld, offset=%ld, diff=%ld, known=%d -> K=%.4f\n", 
+                  raw, _offset, diff, knownWeight, _scaleFactor);
     saveCalibration();
 }
 

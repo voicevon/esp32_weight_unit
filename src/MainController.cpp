@@ -7,7 +7,7 @@ MainController::MainController(WeighingScale& scale, TinyScreen& oled,
       _buttonPin(buttonPin), _servoPin(servoPin),
       _state(SLAVE_INIT), _uiMode(UI_RUN), _currentId(1),
       _ztrThreshold(2), _doorWaitTime(1000), _stateTimer(0),
-      _pendingTare(false), _calTargetWeight(0), _lastUpdateMillis(0),
+      _pendingTare(false), _calTargetWeight(0),
       _ztrIndex(1), _calWeightIndex(0) {}
 
 void MainController::begin() {
@@ -19,6 +19,14 @@ void MainController::begin() {
     _currentId = _prefs.getInt("slave_id", 1);
     _ztrThreshold = _prefs.getInt("ztr_thresh", 2);
     _doorWaitTime = _prefs.getInt("door_time", 1000);
+
+    _ztrIndex = 1; // Default to 2g
+    for (int i = 0; i < 4; i++) {
+        if (_ztrOptions[i] == _ztrThreshold) {
+            _ztrIndex = i;
+            break;
+        }
+    }
     _prefs.end();
 
     _oled.begin();
@@ -55,9 +63,26 @@ void MainController::loop() {
 }
 
 void MainController::handleSampling() {
-    if (_scale.isReady()) {
+    bool ready = _scale.isReady();
+    static unsigned long lastReadyTime = millis();
+    
+    if (ready) {
+        lastReadyTime = millis();
         long raw = _scale.getRawValue();
         _scale.update(raw);
+    } else if (millis() - lastReadyTime > 3000) {
+        // 超过 3s 不 Ready，强制阻塞读取一次以尝试唤醒/同步硬件
+        lastReadyTime = millis();
+        long raw = _scale.getRawValue(); // 这是一个阻塞调用
+        _scale.update(raw);
+        Serial.println("[DIAG] Force-read triggered (Ready Timeout)");
+    }
+
+    static unsigned long lastLog = 0;
+    if (millis() - lastLog > 500) {
+        lastLog = millis();
+        Serial.printf("[DIAG] Ready=%d, W=%.1fg, K=%.4f, Off=%ld\n", 
+                      ready, _scale.getFilteredWeight(), _scale.getScaleFactor(), _scale.getOffset());
     }
 }
 
@@ -78,8 +103,7 @@ void MainController::handleLogic() {
             if (now - _stateTimer >= 1500) {
                 _scale.calibrate(_calTargetWeight);
                 updateState(SLAVE_STANDBY);
-                _uiMode = UI_RUN;
-                _oled.showMessage("SUCCESS", 1000);
+                _uiMode = UI_CALIB_RESULT; // 标定完成后显示结果页面，等待人工确认
             }
             break;
         default: break;
@@ -97,12 +121,13 @@ void MainController::handleComm() {
 
     unsigned long now = millis();
 
-    // 链路统计逻辑 (修正版)：仅观察不读取，防止干扰协议栈
+    static unsigned long lastDiagUpdate = 0;
     // 链路统计逻辑：真实读取字节以清空缓冲区，并更新计数器
     while (_modbus.availableRaw()) {
         _diagRxByte = _modbus.readRawByte(); // 读取真实字节
-        if (now - _lastUpdateMillis > 50) { 
+        if (now - lastDiagUpdate > 50) { 
             _diagRxCount = (_diagRxCount + 1) % 1000;
+            lastDiagUpdate = now; // 明确更新诊断计时器
         }
     }
 
@@ -159,7 +184,7 @@ void MainController::handleComm() {
 
     _modbus.updateWeight(weight);
     _modbus.updateStatus(_state, _scale.isStable(2.0f));
-    _modbus.updateRawADC(_scale.getRawValue());
+    _modbus.updateRawADC(_scale.getLastRaw());
 
     xSemaphoreGive(_mutexComm);
 }
@@ -175,8 +200,19 @@ void MainController::handleUI() {
                 else if (_uiMode == UI_CONFIG_ZTR) {
                     _ztrIndex = (_ztrIndex + 1) % 4;
                     _ztrThreshold = _ztrOptions[_ztrIndex];
+                    
+                    // 同步到 Modbus 和 Preferences，防止被 handleComm 覆盖
+                    if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(10)) == pdTRUE) {
+                        _modbus.setZtrThreshold(_ztrThreshold);
+                        xSemaphoreGive(_mutexComm);
+                    }
+                    _prefs.begin("weight_unit", false);
+                    _prefs.putInt("ztr_thresh", _ztrThreshold);
+                    _prefs.end();
                 } else if (_uiMode == UI_MENU_CALIB) {
                     _calWeightIndex = (_calWeightIndex + 1) % 5;
+                } else if (_uiMode == UI_CALIB_RESULT) {
+                    _uiMode = UI_RUN; // 结果确认后回到主运行界面
                 }
                 break;
                 
@@ -209,17 +245,23 @@ void MainController::handleUI() {
     }
 
     unsigned long now = millis();
-    if (now - _lastUpdateMillis >= 100) {
-        _lastUpdateMillis = now;
+    // 刷新频率提高：一秒约 30 帧 (33ms)
+    if (now - _lastUIUpdateMillis >= 33) {
+        _lastUIUpdateMillis = now;
         
         int displayParam = 0;
+        float displayWeight = _scale.getFilteredWeight();
+        int32_t displayADC = _scale.getLastRaw();
+
         if (_uiMode == UI_CONFIG_ZTR) displayParam = _ztrThreshold;
         else if (_uiMode == UI_MENU_CALIB) displayParam = _calWeights[_calWeightIndex];
         else if (_uiMode == UI_RS485_DIAG) displayParam = (_diagTxCounter << 8) | _diagRxByte;
+        else if (_uiMode == UI_CALIB_RESULT) {
+            displayWeight = _scale.getScaleFactor(); // 结果页显示斜率
+            displayADC = _scale.getOffset();        // 结果页显示偏移
+        }
 
-        // 重载 update 以传递 RX 字节和计数器（此处我们复用 displayParam 传递 Tx/Rx 对，另传 Count）
-        // 暂时直接调用 update，我们后续在 TinyScreen 中修改参数列表
-        _oled.update(_uiMode, _state, _scale.getFilteredWeight(), _scale.getRawValue(), 
+        _oled.update(_uiMode, _state, displayWeight, displayADC, 
                         _currentId, false, displayParam, _scale.isStable(2.0f), _diagRxByte, _diagRxCount);
     }
 }
