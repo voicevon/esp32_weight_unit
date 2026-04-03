@@ -80,13 +80,13 @@ void ModbusSlave::task() {
 void ModbusSlave::processFrame() {
     if (_rxLen < 4) return; // 最小有效帧 [ID, FN, CRC16_L, CRC16_H]
 
-    // 时效性校验：如果收到首字节到现在超过 800ms，主站必然已判定超时。
-    // 这说明从机可能在采样或其他高频任务中发生阻塞。
-    // 为了避免回复包撞上主站发出的下一个轮询包，我们选择丢弃此请求包 (证据：防碰撞逻辑)。
-    if (millis() - _firstByteTime > 800) {
+    // 时效性校验：放宽到 1500ms。
+    if (millis() - _firstByteTime > 1500) {
+        Serial.printf("[SLAVE_DIAG] DISCARD: Request too old (%lu ms)\n", millis() - _firstByteTime);
         _rxLen = 0;
         return;
     }
+
 
     // 1. 检查 ID (0 为广播)
     if (_rxBuf[0] != _slaveId && _rxBuf[0] != 0x00) return;
@@ -115,7 +115,13 @@ void ModbusSlave::processFrame() {
             resp[3 + i * 2] = val >> 8;
             resp[4 + i * 2] = val & 0xFF;
         }
+        
+        unsigned long procTime = millis() - _firstByteTime;
+        Serial.printf("[SLAVE_DIAG] RX 0x03 ID:%d, Addr:0x%04X, Qty:%d, Proc:%lu ms\n", 
+                      _rxBuf[0], startAddr, quantity, procTime);
+                      
         sendResponse(resp, 3 + quantity * 2);
+
         
     } else if (fn == 0x06) { // 写单个寄存器
         uint16_t addr = (_rxBuf[2] << 8) | _rxBuf[3];

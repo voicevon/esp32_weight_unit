@@ -120,16 +120,20 @@ void MainController::handleComm() {
     if (xSemaphoreTake(_mutexComm, pdMS_TO_TICKS(5)) != pdTRUE) return;
 
     unsigned long now = millis();
-
     static unsigned long lastDiagUpdate = 0;
-    // 链路统计逻辑：真实读取字节以清空缓冲区，并更新计数器
-    while (_modbus.availableRaw()) {
-        _diagRxByte = _modbus.readRawByte(); // 读取真实字节
-        if (now - lastDiagUpdate > 50) { 
-            _diagRxCount = (_diagRxCount + 1) % 1000;
-            lastDiagUpdate = now; // 明确更新诊断计时器
+
+    // 链路统计逻辑：仅在诊断模式下读取真实字节，防止干扰正常 Modbus 协议栈
+    if (_uiMode == UI_RS485_DIAG) {
+        while (_modbus.availableRaw()) {
+            _diagRxByte = _modbus.readRawByte(); 
+            if (now - lastDiagUpdate > 50) { 
+                _diagRxCount = (_diagRxCount + 1) % 1000;
+                lastDiagUpdate = now; 
+            }
         }
     }
+
+
 
     // 链路诊断模式逻辑
     if (_uiMode == UI_RS485_DIAG) {
