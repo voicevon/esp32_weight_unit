@@ -4,6 +4,7 @@
 #include "DiagnosticHandler.h"
 #include "ConfigIdHandler.h"
 #include "ConfigServoHandler.h"
+#include "ConfigZtrHandler.h"
 #include <Preferences.h>
 
 SlaveApp::SlaveApp(WeighingScale& scale, TinyScreen& oled, ModbusSlave& modbus, 
@@ -23,7 +24,8 @@ void SlaveApp::begin() {
 
     _servo.setPeriodHertz(50);    // MG995 标准 50Hz
     // 显式指定脉冲宽度范围 (500us - 2400us)
-    if (_servo.attach(_servoPin, 500, 2400)) {
+    _servo.attach(_servoPin, 500, 2400);
+    if (_servo.attached()) {
         Serial.printf("[SYSTEM] Servo attached to pin %d\n", _servoPin);
     } else {
         Serial.printf("[ERROR] Servo ATTACH FAILED on pin %d\n", _servoPin);
@@ -45,6 +47,9 @@ void SlaveApp::begin() {
     _modbus.setZtrThreshold(_ztrThreshold);
     _modbus.setDoorTime(_doorTime);
     
+    // 同步给称重单元
+    _scale.setZtrThreshold(_ztrThreshold);
+    
     Serial.printf("[SYSTEM] NodeID=%d, ZTR=%d, Door=%dms\n", _nodeId, _ztrThreshold, _doorTime);
     
     // 默认进入生产工作模式
@@ -55,7 +60,8 @@ void SlaveApp::loop() {
     // 监听按键事件进行模式切换 (全局逻辑层)
     ButtonEvent event = _btn.scan();
     if (event == BTN_LONG_PRESS) {
-        if (_curMode == UI_RUN) switchMode(UI_MENU_CALIB);
+        if (_curMode == UI_RUN) switchMode(UI_CONFIG_ZTR);
+        else if (_curMode == UI_CONFIG_ZTR) switchMode(UI_MENU_CALIB);
         else if (_curMode == UI_MENU_CALIB) switchMode(UI_CONFIG_ID);
         else if (_curMode == UI_CONFIG_ID) switchMode(UI_CONFIG_SERVO);
         else if (_curMode == UI_CONFIG_SERVO) switchMode(UI_RS485_DIAG);
@@ -91,6 +97,9 @@ void SlaveApp::switchMode(UIMode next) {
         case UI_CONFIG_SERVO:
             _activeHandler = new ConfigServoHandler(this);
             break;
+        case UI_CONFIG_ZTR:
+            _activeHandler = new ConfigZtrHandler(this);
+            break;
         case UI_RS485_DIAG:
             _activeHandler = new DiagnosticHandler(this);
             break;
@@ -111,6 +120,12 @@ void SlaveApp::switchMode(UIMode next) {
 
 void SlaveApp::toggleServo() {
     setServo(!_servoOpen);
+}
+
+void SlaveApp::setZtrThreshold(uint16_t threshold) {
+    _ztrThreshold = threshold;
+    _modbus.setZtrThreshold(threshold);
+    _scale.setZtrThreshold(threshold);
 }
 
 void SlaveApp::setServo(bool open) {

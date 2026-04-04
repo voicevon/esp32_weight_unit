@@ -220,13 +220,6 @@ void MainController::handleUI() {
                 }
                 break;
                 
-            case BTN_DOUBLE_CLICK:
-                if (_uiMode == UI_RUN) {
-                    _servo.write(90);
-                    updateState(SLAVE_DISCHARGING);
-                }
-                break;
-                
             case BTN_LONG_PRESS:
                 if (_uiMode == UI_RUN) _uiMode = UI_CONFIG_ID;
                 else if (_uiMode == UI_CONFIG_ID) {

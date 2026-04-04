@@ -57,7 +57,7 @@ void TinyScreen::update(UIMode mode, SlaveState state, float weight, int32_t raw
 
 void TinyScreen::drawHeader(int id, bool commActive) {
     display.setTextSize(1);
-    display.setCursor(104, 0);
+    display.setCursor(0, 0);
     display.print("#");
     if (id < 10) display.print("0");
     display.print(id);
@@ -66,33 +66,14 @@ void TinyScreen::drawHeader(int id, bool commActive) {
 
 void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, bool stable,
                              uint8_t rxByte, uint16_t rxCount) {
-    // 1. 状态文字移至左上角 (0, 0)
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    switch(state) {
-        case SLAVE_STANDBY: display.print("IDLE"); break;
-        case SLAVE_LOCKED: display.print("LOCKED"); break;
-        case SLAVE_DISCHARGING: display.print("OPENING"); break;
-        case SLAVE_RECOVERY: display.print("WAIT.."); break;
-        case SLAVE_CALIBRATING: display.print("CALIB"); break;
-        default: display.print("BUSY"); break;
-    }
+    // 1. (已移除) 顶部状态文字
 
-    // 2. 稳定标志
-    if (stable) {
-        display.fillRect(80, 0, 20, 9, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
-        display.setCursor(81, 1);
-        display.print("ST");
-        display.setTextColor(SSD1306_WHITE);
-    }
-
-    // 3. 核心重量显示 (居中)
+    // 2. 核心重量显示 (继续向上平移，并改为整数显示)
     display.setTextSize(2);
-    display.setCursor(10, 10);
-    display.printf("%6.1f g", weight);
+    display.setCursor(10, 3);
+    display.printf("%6d g", (int)round(weight));
 
-    // 4. 底部调试信息 (AD + RX)
+    // 3. 底部调试信息 (AD - 向下微移)
     display.setTextSize(1);
     
     // ADC 格式化 (千分位)
@@ -115,18 +96,23 @@ void TinyScreen::drawPageRun(float weight, SlaveState state, int32_t rawADC, boo
     }
     adBuf[destIdx] = '\0';
     
-    // 显示 AD
-    display.setCursor(0, 24);
+    // 显示 AD (底部紧贴)
+    display.setCursor(0, 25);
     display.printf("A:%s", adBuf);
 
-    // 5. 链路层接收信息 RX [Byte] [Count]
-    display.setCursor(85, 24);
-    display.printf("R:%02X %03d", rxByte, rxCount % 1000);
+    // 4. 稳定标志 (移至右下角，高度对齐)
+    if (stable) {
+        display.fillRect(110, 24, 18, 8, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(112, 25);
+        display.print("ST");
+        display.setTextColor(SSD1306_WHITE);
+    }
 }
 
 void TinyScreen::drawPageConfig(int id) {
     display.setTextSize(1);
-    display.setCursor(0, 0);
+    display.setCursor(30, 0);
     display.print("SET SLAVE ID:");
     
     display.setTextSize(2);
@@ -137,39 +123,36 @@ void TinyScreen::drawPageConfig(int id) {
 
 void TinyScreen::drawPageConfigZTR(int ztr, float currentWeight) {
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("ZERO TRACK");
+    display.setCursor(30, 0);
+    display.print("ZERO RANGE");
     
-    // 中间显示实时重量，方便观察
-    display.setCursor(70, 0);
-    display.printf("W:%4.1fg", currentWeight);
+    // 右上角实时重量参考
+    display.setCursor(100, 0);
+    display.printf("%.1f", currentWeight);
     
+    // 主数值居中显示
     display.setTextSize(2);
-    display.setCursor(35, 14);
+    display.setCursor(30, 14);
     if (ztr == 0) display.print("OFF");
     else display.printf("%d g", ztr);
 }
 
 void TinyScreen::drawPageConfigServo(bool isOpen) {
     display.setTextSize(1);
-    display.setCursor(0, 0);
+    display.setCursor(30, 0);
     display.print("SERVO TEST");
     
     display.setTextSize(2);
     display.setCursor(30, 14);
     if (isOpen) display.print("OPEN");
     else display.print("CLOSE");
-    
-    display.setTextSize(1);
-    display.setCursor(0, 24);
-    display.print("[CLICK] TO TOGGLE");
 }
 
 void TinyScreen::drawPageCalibrate(SlaveState state, int calWeight, int32_t rawADC) {
     display.setCursor(0, 0);
     display.print("CALIBRATION");
     display.setCursor(0, 15);
-    if (calWeight == 0) display.print("-> EXIT");
+    if (calWeight == -1) display.print("-> EXIT");
     else display.printf("-> %d g", calWeight);
     
     // Fixed coordinate: y=24 instead of 40 (screen is only 32px high)
@@ -208,7 +191,11 @@ void TinyScreen::drawPageRS485Diag(int tx, uint8_t rx, uint16_t count) {
 
 void TinyScreen::showMessage(const char* msg, int duration) {
     display.clearDisplay();
-    display.setCursor(20, 24);
+    display.setTextSize(1);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((128 - w) / 2, (32 - h) / 2);
     display.print(msg);
     display.display();
     if (duration > 0) delay(duration);
@@ -217,7 +204,17 @@ void TinyScreen::showMessage(const char* msg, int duration) {
 void TinyScreen::showLargeMessage(const char* msg, int duration) {
     display.clearDisplay();
     display.setTextSize(2);
-    display.setCursor(10, 24);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+    
+    // 如果大号字体太宽，自动降级为小号字体
+    if (w > 124) {
+        display.setTextSize(1);
+        display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+    }
+    
+    display.setCursor((128 - w) / 2, (32 - h) / 2);
     display.print(msg);
     display.display();
     if (duration > 0) delay(duration);

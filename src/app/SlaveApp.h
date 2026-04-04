@@ -36,6 +36,7 @@ public:
     void setServo(bool open);
 
     uint16_t getZtrThreshold() const { return _ztrThreshold; }
+    void setZtrThreshold(uint16_t threshold);
     uint16_t getDoorTime() const { return _doorTime; }
 
 private:

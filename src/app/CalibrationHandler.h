@@ -22,7 +22,8 @@ private:
     const int _calWeights[5] = {0, 100, 200, 500, 1000};
     
     void handleUI(ButtonEvent event);
-    void handleCalib();
+    void handleCalib(ButtonEvent event);
+    void handleSampling();
 };
 
 #endif

@@ -10,8 +10,16 @@ public:
     void begin();
     
     void update(long raw); 
-    float getWeight() const { return _currentWeight; }
-    float getFilteredWeight() const { return _filteredWeight; }
+    float getWeight() const { 
+        return (abs(_currentWeight) <= _ztrThreshold) ? 0.0f : _currentWeight; 
+    }
+    float getFilteredWeight() const { 
+        return (abs(_filteredWeight) <= _ztrThreshold) ? 0.0f : _filteredWeight; 
+    }
+    
+    // 原始测量值（无死区），用于调试或配置记录
+    float getTrueWeight() const { return _currentWeight; }
+    float getTrueFilteredWeight() const { return _filteredWeight; }
     
     bool isStable(float threshold); 
     void tare();                    
@@ -26,6 +34,7 @@ public:
     void setScale(float factor);
     void saveCalibration();
     void loadCalibration();
+    void setZtrThreshold(uint16_t threshold) { _ztrThreshold = threshold; }
 
 private:
     HX711 _scale;
@@ -44,6 +53,9 @@ private:
     float _weightHistory[HISTORY_SIZE];
     int _historyIndex;
     bool _historyFull;
+    
+    uint16_t _ztrThreshold;
+    unsigned long _lastZeroStableTime;
 
 };
 

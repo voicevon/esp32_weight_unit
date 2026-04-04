@@ -4,7 +4,7 @@
 WeighingScale::WeighingScale(int dtPin, int sckPin) 
     : _dtPin(dtPin), _sckPin(sckPin), _scaleFactor(1.0), _offset(0), _lastRaw(0),
       _currentWeight(0.0), _filteredWeight(0.0), _emaAlpha(0.3),
-      _historyIndex(0), _historyFull(false) {
+      _historyIndex(0), _historyFull(false), _ztrThreshold(2), _lastZeroStableTime(0) {
     for (int i = 0; i < HISTORY_SIZE; i++) _weightHistory[i] = 0.0f;
 }
 
@@ -34,6 +34,23 @@ void WeighingScale::update(long raw) {
     _weightHistory[_historyIndex] = _filteredWeight;
     _historyIndex = (_historyIndex + 1) % HISTORY_SIZE;
     if (_historyIndex == 0) _historyFull = true;
+
+    // --- 零点自动追踪核心逻辑 ---
+    if (_ztrThreshold > 0 && abs(_filteredWeight) <= _ztrThreshold) {
+        if (isStable(1.0f)) { // 零点稳定阈值固定为 1.0g
+            if (millis() - _lastZeroStableTime > 2000) { // 持续稳定 2 秒
+                long rawShift = (long)(_filteredWeight * factor); 
+                _offset += rawShift;
+                _filteredWeight = 0; // 瞬间归零
+                _lastZeroStableTime = millis();
+                Serial.printf("[ZTR] Auto tracking zero. Shift: %ld, New offset: %ld\n", rawShift, _offset);
+            }
+        } else {
+            _lastZeroStableTime = millis();
+        }
+    } else {
+        _lastZeroStableTime = millis();
+    }
 }
 
 bool WeighingScale::isStable(float threshold) {
