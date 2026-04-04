@@ -53,6 +53,17 @@ void ProductionHandler::handleComm() {
     uint16_t cmd = modbus.getControlCommand();
     if (cmd != 0) {
         // 分发指令逻辑
+        if (cmd == 1) { // CMD_SERVO_OPEN
+            _app->setServo(true);
+            Serial.println("[CMD] Modbus Servo OPEN");
+        } else if (cmd == 2) { // CMD_SERVO_CLOSE
+            _app->setServo(false);
+            Serial.println("[CMD] Modbus Servo CLOSE");
+        } else if (cmd == 3) { // CMD_TARE
+            scale.tare();
+            Serial.println("[CMD] Modbus TARE Executed");
+        }
+
         modbus.clearControlCommand();
     }
 

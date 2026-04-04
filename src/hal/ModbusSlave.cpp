@@ -117,8 +117,8 @@ void ModbusSlave::processFrame() {
         }
         
         unsigned long procTime = millis() - _firstByteTime;
-        Serial.printf("[SLAVE_DIAG] RX 0x03 ID:%d, Addr:0x%04X, Qty:%d, Proc:%lu ms\n", 
-                      _rxBuf[0], startAddr, quantity, procTime);
+        // Serial.printf("[SLAVE_DIAG] RX 0x03 ID:%d, Addr:0x%04X, Qty:%d, Proc:%lu ms\n", 
+        //               _rxBuf[0], startAddr, quantity, procTime);
                       
         sendResponse(resp, 3 + quantity * 2);
 
@@ -134,6 +134,10 @@ void ModbusSlave::processFrame() {
 
         _regBank[addr] = val;
         
+        unsigned long procTime = millis() - _firstByteTime;
+        // Serial.printf("[SLAVE_DIAG] RX 0x06 ID:%d, Addr:0x%04X, Value:%d, Proc:%lu ms\n", 
+        //               _rxBuf[0], addr, val, procTime);
+
         // 广播不回复
         if (_rxBuf[0] != 0x00) {
             sendResponse(_rxBuf, 6); // 0x06 回复原帧即可
