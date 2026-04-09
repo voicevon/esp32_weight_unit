@@ -59,17 +59,21 @@ void SlaveApp::begin() {
 void SlaveApp::loop() {
     // 监听按键事件进行模式切换 (全局逻辑层)
     ButtonEvent event = _btn.scan();
-    if (event == BTN_LONG_PRESS) {
+
+    // 优先让当前 Handler 处理事件 (事件冒泡)
+    bool consumed = false;
+    if (_activeHandler) {
+        consumed = _activeHandler->update(event);
+    }
+
+    // 如果事件未被消费，且是长按，则执行全局模式切换
+    if (!consumed && event == BTN_LONG_PRESS) {
         if (_curMode == UI_RUN) switchMode(UI_CONFIG_ZTR);
         else if (_curMode == UI_CONFIG_ZTR) switchMode(UI_MENU_CALIB);
         else if (_curMode == UI_MENU_CALIB) switchMode(UI_CONFIG_ID);
         else if (_curMode == UI_CONFIG_ID) switchMode(UI_CONFIG_SERVO);
         else if (_curMode == UI_CONFIG_SERVO) switchMode(UI_RS485_DIAG);
         else if (_curMode == UI_RS485_DIAG) switchMode(UI_RUN);
-    }
-
-    if (_activeHandler) {
-        _activeHandler->update(event);
     }
 }
 

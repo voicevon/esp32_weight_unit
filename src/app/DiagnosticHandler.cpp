@@ -7,9 +7,10 @@ void DiagnosticHandler::enter() {
     _app->getOled().showMessage("DIAG MODE START", 1000);
 }
 
-void DiagnosticHandler::update(ButtonEvent event) {
+bool DiagnosticHandler::update(ButtonEvent event) {
     handleRawComm();
     handleUI();
+    return false;
 }
 
 void DiagnosticHandler::exit() {

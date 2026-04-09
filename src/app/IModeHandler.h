@@ -16,8 +16,8 @@ public:
     // 进入模式：进行资源锁、初始化显示等
     virtual void enter() = 0;
 
-    // 每一帧的逻辑更新
-    virtual void update(ButtonEvent event) = 0;
+    // 每一帧的逻辑更新。返回 true 表示事件已被处理，不需要全局逻辑再次处理。
+    virtual bool update(ButtonEvent event) = 0;
 
     // 退出模式：释放资源、清理缓冲区
     virtual void exit() = 0;

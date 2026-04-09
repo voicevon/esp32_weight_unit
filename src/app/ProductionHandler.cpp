@@ -7,16 +7,19 @@ void ProductionHandler::enter() {
     _app->getOled().showMessage("NORMAL MODE", 800);
 }
 
-void ProductionHandler::update(ButtonEvent event) {
+bool ProductionHandler::update(ButtonEvent event) {
+    bool consumed = false;
     if (event == BTN_CLICK) {
         _app->getScale().tare();
         _app->getOled().showLargeMessage("TARED", 2000);
+        consumed = true;
     }
 
     handleSampling();
     handleLogic();
     handleComm();
     handleUI();
+    return consumed;
 }
 
 void ProductionHandler::exit() {

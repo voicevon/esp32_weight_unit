@@ -9,10 +9,12 @@ void ConfigIdHandler::enter() {
     _app->getOled().showMessage("SET ID MODE", 800);
 }
  
-void ConfigIdHandler::update(ButtonEvent event) {
+bool ConfigIdHandler::update(ButtonEvent event) {
+    bool consumed = false;
     if (event == BTN_CLICK) {
         _tempId = (_tempId % 20) + 1;
         Serial.printf("[CONFIG] Temp ID: %d\n", _tempId);
+        consumed = true;
     }
  
     unsigned long now = millis();
@@ -21,6 +23,7 @@ void ConfigIdHandler::update(ButtonEvent event) {
         // 使用 TinyScreen::update 并传入 _tempId
         _app->getOled().update(UI_CONFIG_ID, SLAVE_INIT, 0, 0, _tempId, false, 0, false);
     }
+    return consumed;
 }
  
 void ConfigIdHandler::exit() {

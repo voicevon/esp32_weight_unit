@@ -6,9 +6,11 @@ void ConfigServoHandler::enter() {
     _app->getOled().showMessage("SERVO TEST ON", 800);
 }
  
-void ConfigServoHandler::update(ButtonEvent event) {
+bool ConfigServoHandler::update(ButtonEvent event) {
+    bool consumed = false;
     if (event == BTN_CLICK) {
         _app->toggleServo();
+        consumed = true;
     }
  
     unsigned long now = millis();
@@ -19,6 +21,7 @@ void ConfigServoHandler::update(ButtonEvent event) {
                               _app->getNodeId(), false, 
                               _app->isServoOpen() ? 1 : 0, false);
     }
+    return consumed;
 }
  
 void ConfigServoHandler::exit() {

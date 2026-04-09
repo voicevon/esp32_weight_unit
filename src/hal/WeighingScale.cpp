@@ -19,10 +19,6 @@ void WeighingScale::begin() {
     while(!_scale.is_ready() && millis() - st < 1000) {
         delay(5);
     }
-    if (_scale.is_ready()) {
-        _scale.tare();
-        _offset = _scale.get_offset();
-    }
 }
 
 void WeighingScale::update(long raw) {

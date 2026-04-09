@@ -12,7 +12,7 @@ class ProductionHandler : public IModeHandler {
 public:
     ProductionHandler(SlaveApp* app);
     virtual void enter() override;
-    virtual void update(ButtonEvent event) override;
+    virtual bool update(ButtonEvent event) override;
     virtual void exit() override;
 
 private:

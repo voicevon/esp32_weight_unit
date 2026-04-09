@@ -9,12 +9,14 @@ void ConfigZtrHandler::enter() {
     _app->getOled().showMessage("ZERO TRACK", 800);
 }
 
-void ConfigZtrHandler::update(ButtonEvent event) {
+bool ConfigZtrHandler::update(ButtonEvent event) {
+    bool consumed = false;
     if (event == BTN_CLICK) {
         if (_tempZtrValue == 2) _tempZtrValue = 5;
         else if (_tempZtrValue == 5) _tempZtrValue = 10;
         else _tempZtrValue = 2; // Cycle back to 2
         Serial.printf("[CONFIG] Temp ZTR: %d g\n", _tempZtrValue);
+        consumed = true;
     }
 
     unsigned long now = millis();
@@ -26,6 +28,7 @@ void ConfigZtrHandler::update(ButtonEvent event) {
                                _app->getScale().getLastRaw(), _app->getNodeId(), 
                                false, _tempZtrValue, false);
     }
+    return consumed;
 }
 
 void ConfigZtrHandler::exit() {

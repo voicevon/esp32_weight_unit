@@ -12,7 +12,7 @@ class CalibrationHandler : public IModeHandler {
 public:
     CalibrationHandler(SlaveApp* app);
     virtual void enter() override;
-    virtual void update(ButtonEvent event) override;
+    virtual bool update(ButtonEvent event) override;
     virtual void exit() override;
 
 private:
@@ -21,8 +21,8 @@ private:
     int _calWeightIndex = 0;
     const int _calWeights[5] = {0, 100, 200, 500, 1000};
     
-    void handleUI(ButtonEvent event);
-    void handleCalib(ButtonEvent event);
+    bool handleUI(ButtonEvent event);
+    bool handleCalib(ButtonEvent event);
     void handleSampling();
 };
 
