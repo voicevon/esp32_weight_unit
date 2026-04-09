@@ -39,6 +39,9 @@ public:
     void setZtrThreshold(uint16_t threshold);
     uint16_t getDoorTime() const { return _doorTime; }
 
+    static const uint8_t SERVO_OPEN_ANGLE = 72;
+    static const uint8_t SERVO_CLOSE_ANGLE = 0;
+
 private:
     WeighingScale& _scale;
     TinyScreen& _oled;

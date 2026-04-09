@@ -31,7 +31,7 @@ void SlaveApp::begin() {
         Serial.printf("[ERROR] Servo ATTACH FAILED on pin %d\n", _servoPin);
     }
 
-    _servo.write(0); // 初始关闭
+    _servo.write(SERVO_CLOSE_ANGLE); // 初始关闭
     _servoOpen = false;
 
     // 从 EEPROM (Preferences) 读取配置
@@ -135,10 +135,10 @@ void SlaveApp::setZtrThreshold(uint16_t threshold) {
 void SlaveApp::setServo(bool open) {
     _servoOpen = open;
     if (_servoOpen) {
-        _servo.write(90);
+        _servo.write(SERVO_OPEN_ANGLE);
         Serial.println("[SERVO] Manual OPEN");
     } else {
-        _servo.write(0);
+        _servo.write(SERVO_CLOSE_ANGLE);
         Serial.println("[SERVO] Manual CLOSE");
     }
 }

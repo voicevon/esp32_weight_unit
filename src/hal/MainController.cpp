@@ -168,7 +168,7 @@ void MainController::handleComm() {
     if (cmd != 0) {
         if (cmd == 1 || cmd == 5) {
             if (_state == SLAVE_STANDBY || _state == SLAVE_LOCKED) {
-                _servo.write(90);
+                _servo.write(72);
                 _modbus.incrementDataId();
                 updateState(SLAVE_DISCHARGING);
             }
