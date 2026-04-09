@@ -10,7 +10,7 @@ void ProductionHandler::enter() {
 void ProductionHandler::update(ButtonEvent event) {
     if (event == BTN_CLICK) {
         _app->getScale().tare();
-        _app->getOled().showMessage("TARE OK", 800);
+        _app->getOled().showLargeMessage("TARED", 2000);
     }
 
     handleSampling();
@@ -62,6 +62,7 @@ void ProductionHandler::handleComm() {
         } else if (cmd == 3) { // CMD_TARE
             scale.tare();
             Serial.println("[CMD] Modbus TARE Executed");
+            _app->getOled().showLargeMessage("TARED", 2000);
         }
 
         modbus.clearControlCommand();
